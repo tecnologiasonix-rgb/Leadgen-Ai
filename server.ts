@@ -41,6 +41,13 @@ async function startServer() {
     console.log(`[Diagnostic] GEMINI_API_KEY starts with: ${process.env.GEMINI_API_KEY.substring(0, 4)}...`);
   }
 
+  // Middleware para CORS y COOP (Ayuda con los popups de Firebase Auth)
+  app.use((req, res, next) => {
+    res.setHeader("Cross-Origin-Opener-Policy", "same-origin-allow-popups");
+    // También es una buena práctica habilitar COEP si se requiere, pero por ahora COOP es lo que pide el error
+    next();
+  });
+
   // Ruta Webhook de Stripe (Debe usar express.raw ANTES de express.json para que funcione la verificación de la firma)
   app.post("/api/webhooks/stripe", express.raw({ type: 'application/json' }), async (req, res) => {
     const sig = req.headers['stripe-signature'];
