@@ -6,7 +6,7 @@ WORKDIR /app
 # Copiar configuración de dependencias
 COPY package*.json ./
 
-# Instalar TODAS las dependencias (necesitamos vite, tsx, etc. para build y start)
+# Instalar dependencias (incluyendo devDependencies para el build y tsx)
 RUN npm install
 
 # Copiar el resto del código
@@ -15,12 +15,16 @@ COPY . .
 # Construir la parte de React (dist/)
 RUN npm run build
 
-# Exponer el puerto por el que escuchará el servidor Express
+# Opcional: Podrías limpiar devDependencies, pero tsx las necesita para correr el servidor TS
+# Si prefieres seguridad total, podrías mover tsx a dependencies en package.json
+
+# Exponer el puerto
 EXPOSE 3000
 
-# Añadir variables de entorno por defecto que puedan hacer falta
+# Variables de entorno
 ENV NODE_ENV=production
-ENV PORT=3000
+# El puerto lo pondremos dinámico en server.ts, pero 8080 es el estándar de Cloud Run
+ENV PORT=8080
 
 # Arrancar el servidor
 CMD ["npm", "start"]
