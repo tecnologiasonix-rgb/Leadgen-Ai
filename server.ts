@@ -32,7 +32,7 @@ const stripe = process.env.STRIPE_SECRET_KEY
 
 async function startServer() {
   const app = express();
-  const PORT = 3000;
+  const PORT = process.env.PORT || 3000;
 
   // Ruta Webhook de Stripe (Debe usar express.raw ANTES de express.json para que funcione la verificación de la firma)
   app.post("/api/webhooks/stripe", express.raw({ type: 'application/json' }), async (req, res) => {
@@ -255,8 +255,8 @@ async function startServer() {
     });
   }
 
-  app.listen(PORT, "0.0.0.0", () => {
-    console.log(`Servidor de Campañas corriendo en http://localhost:${PORT}`);
+  app.listen(Number(PORT), "0.0.0.0", () => {
+    console.log(`Servidor corriendo en el puerto ${PORT}`);
   });
 }
 
