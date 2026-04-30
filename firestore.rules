@@ -1,0 +1,69 @@
+rules_version = '2';
+service cloud.firestore {
+  match /databases/{database}/documents {
+    // Default deny
+    match /{document=**} {
+      allow read, write: if false;
+    }
+
+    // Helper functions
+    function isSignedIn() {
+      return request.auth != null;
+    }
+
+    function isOwner(userId) {
+      return isSignedIn() && request.auth.uid == userId;
+    }
+
+    function isValidId(id) {
+      return id is string && id.size() <= 128 && id.matches('^[a-zA-Z0-9_\\-]+$');
+    }
+
+    function incoming() {
+      return request.resource.data;
+    }
+
+    function existing() {
+      return resource.data;
+    }
+
+    // Lead Validation
+    function isValidLead(data) {
+      return data.keys().hasAll(['name', 'userId', 'createdAt']) &&
+             data.name is string && data.name.size() > 0 && data.name.size() <= 200 &&
+             data.userId == request.auth.uid &&
+             data.createdAt == request.time &&
+             (data.get('email', '') is string) &&
+             (data.get('website', '') is string) &&
+             (data.get('phone', '') is string) &&
+             (data.get('address', '') is string) &&
+             (data.get('type', '') is string) &&
+             (data.get('zipCode', '') is string);
+    }
+
+    match /leads/{leadId} {
+      allow read, write: if isSignedIn();
+    }
+    // EmailTemplate Validation
+    function isValidEmailTemplate(data) {
+      return data.keys().hasAll(['name', 'subject', 'html', 'userId', 'createdAt']) &&
+             data.name is string && data.name.size() > 0 && data.name.size() <= 200 &&
+             data.subject is string && data.subject.size() > 0 && data.subject.size() <= 200 &&
+             data.html is string && data.html.size() <= 100000 &&
+             (data.get('description', '') is string) &&
+             data.userId == request.auth.uid;
+    }
+
+    match /emailTemplates/{templateId} {
+      allow read, write: if isSignedIn();
+    }
+    
+    match /userStats/{userId} {
+      allow read, write: if isOwner(userId);
+    }
+    
+    match /users/{userId} {
+      allow read, write: if isOwner(userId);
+    }
+  }
+}

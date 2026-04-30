@@ -1,0 +1,45 @@
+{
+  "entities": {
+    "Lead": {
+      "title": "Lead",
+      "description": "Un prospecto de negocio capturado por el scraper o importado",
+      "type": "object",
+      "properties": {
+        "name": { "type": "string", "description": "Nombre comercial" },
+        "address": { "type": "string", "description": "Dirección completa" },
+        "phone": { "type": "string", "description": "Teléfono de contacto" },
+        "email": { "type": "string", "description": "Correo electrónico" },
+        "website": { "type": "string", "description": "Sitio web oficial" },
+        "type": { "type": "string", "description": "Tipo de negocio (Nicho)" },
+        "zipCode": { "type": "string", "description": "Código postal" },
+        "createdAt": { "type": "string", "format": "date-time" },
+        "userId": { "type": "string", "description": "ID del usuario propietario del lead" }
+      },
+      "required": ["name", "userId", "createdAt"]
+    },
+    "EmailTemplate": {
+      "title": "EmailTemplate",
+      "description": "Plantilla de correo generada o creada por el usuario",
+      "type": "object",
+      "properties": {
+        "name": { "type": "string", "description": "Nombre de la plantilla" },
+        "subject": { "type": "string", "description": "Asunto del correo" },
+        "description": { "type": "string", "description": "Descripción de la plantilla" },
+        "html": { "type": "string", "description": "Contenido HTML" },
+        "userId": { "type": "string", "description": "ID del usuario propietario" },
+        "createdAt": { "type": "string", "format": "date-time" }
+      },
+      "required": ["name", "subject", "html", "userId", "createdAt"]
+    }
+  },
+  "firestore": {
+    "/leads/{leadId}": {
+      "schema": "Lead",
+      "description": "Colección global de leads capturados"
+    },
+    "/emailTemplates/{templateId}": {
+      "schema": "EmailTemplate",
+      "description": "Plantillas de email del usuario"
+    }
+  }
+}

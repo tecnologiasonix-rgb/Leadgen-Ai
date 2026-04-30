@@ -1,0 +1,263 @@
+import express from "express";
+import { createServer as createViteServer } from "vite";
+import path from "path";
+import nodemailer from "nodemailer";
+import dotenv from "dotenv";
+import Stripe from "stripe";
+import admin from "firebase-admin";
+
+dotenv.config();
+
+// Inicializar Firebase Admin
+try {
+  if (process.env.FIREBASE_SERVICE_ACCOUNT) {
+    const serviceAccount = JSON.parse(process.env.FIREBASE_SERVICE_ACCOUNT);
+    if (!admin.apps.length) {
+      admin.initializeApp({
+        credential: admin.credential.cert(serviceAccount)
+      });
+      console.log("[Firebase Admin] Inicializado correctamente.");
+    }
+  } else {
+    console.warn("[Firebase Admin] No se ha configurado FIREBASE_SERVICE_ACCOUNT. El Webhook de Stripe no podrá actualizar la base de datos.");
+  }
+} catch (error) {
+  console.error("[Firebase Admin] Error inicializando Firebase Admin:", error);
+}
+
+// Inicializar Stripe
+const stripe = process.env.STRIPE_SECRET_KEY 
+  ? new Stripe(process.env.STRIPE_SECRET_KEY, { apiVersion: "2023-10-16" as any }) 
+  : null;
+
+async function startServer() {
+  const app = express();
+  const PORT = 3000;
+
+  // Ruta Webhook de Stripe (Debe usar express.raw ANTES de express.json para que funcione la verificación de la firma)
+  app.post("/api/webhooks/stripe", express.raw({ type: 'application/json' }), async (req, res) => {
+    const sig = req.headers['stripe-signature'];
+    const endpointSecret = process.env.STRIPE_WEBHOOK_SECRET;
+
+    if (!stripe || !endpointSecret || !admin.apps.length) {
+      return res.status(500).send("Webhook configuration missing.");
+    }
+
+    let event;
+
+    try {
+      event = stripe.webhooks.constructEvent(req.body, sig as string, endpointSecret);
+    } catch (err) {
+      console.error("[Stripe Webhook] Error verificando la firma:", (err as Error).message);
+      return res.status(400).send(`Webhook Error: ${(err as Error).message}`);
+    }
+
+    // Manejar el evento
+    try {
+      const db = admin.firestore();
+      
+      switch (event.type) {
+        case 'checkout.session.completed': {
+          const session = event.data.object as Stripe.Checkout.Session;
+          const userId = session.client_reference_id;
+          const customerId = session.customer as string;
+          const subscriptionId = session.subscription as string;
+          
+          if (userId) {
+            console.log(`[Stripe Webhook] Actualizando plan para el usuario: ${userId}`);
+            
+            // Determinar el plan basado en el price ID, metadatos, o link (para este ejemplo es genérico)
+            // Asumimos un rol 'pro' por defecto si compran un checkout básico, tú puedes mapearlo mejor:
+            let plan = 'pro'; 
+            let limit = 5000;
+
+            await db.collection('users').doc(userId).set({
+              plan: plan,
+              stripeCustomerId: customerId,
+              subscriptionId: subscriptionId,
+              subscriptionStatus: 'active',
+              leadsLimit: limit,
+              updatedAt: admin.firestore.FieldValue.serverTimestamp()
+            }, { merge: true });
+          }
+          break;
+        }
+        case 'customer.subscription.updated':
+        case 'customer.subscription.deleted': {
+          const subscription = event.data.object as Stripe.Subscription;
+          const customerId = subscription.customer as string;
+          
+          // Buscar el usuario con este customerId
+          const usersSnapshot = await db.collection('users').where('stripeCustomerId', '==', customerId).get();
+          
+          if (!usersSnapshot.empty) {
+            const userDoc = usersSnapshot.docs[0];
+            await userDoc.ref.update({
+              subscriptionStatus: subscription.status,
+              // Si se cancela/elimina, puedes pasarlo a 'startup' o plan gratuito
+              plan: subscription.status === 'active' ? userDoc.data().plan : 'free',
+              leadsLimit: subscription.status === 'active' ? userDoc.data().leadsLimit : 3,
+              updatedAt: admin.firestore.FieldValue.serverTimestamp()
+            });
+            console.log(`[Stripe Webhook] Suscripción actualizada para ${userDoc.id}: ${subscription.status}`);
+          }
+          break;
+        }
+        default:
+          console.log(`[Stripe Webhook] Evento no manejado: ${event.type}`);
+      }
+
+      res.status(200).json({ received: true });
+    } catch (err) {
+      console.error("[Stripe Webhook] Error manejando el evento:", err);
+      res.status(500).send("Webhook handler failed.");
+    }
+  });
+
+  // Importante: parsear JSON para el resto de rutas DESPUÉS del webhook de Stripe
+  app.use(express.json());
+
+  // Configuración SMTP Dinámica
+  const smtpPort = parseInt(process.env.EMAIL_PORT || "465");
+  const transporter = nodemailer.createTransport({
+    host: process.env.EMAIL_HOST || "smtp.zoho.eu",
+    port: smtpPort,
+    secure: smtpPort === 465, // SSL para 465, STARTTLS para otros
+    auth: {
+      user: process.env.EMAIL_USER,
+      pass: process.env.EMAIL_PASS,
+    },
+    // Añadimos esto para asegurar compatibilidad con servidores que requieren TLS
+    tls: {
+      rejectUnauthorized: false
+    }
+  });
+
+  // API para enviar emails
+  app.post("/api/send-email", async (req, res) => {
+    const { to, subject, html, leads, userId, smtpSettings } = req.body;
+
+    let smtpHost = process.env.EMAIL_HOST || "smtp.zoho.eu";
+    let smtpPort = parseInt(process.env.EMAIL_PORT || "465");
+    let smtpUser = process.env.EMAIL_USER;
+    let smtpPass = process.env.EMAIL_PASS;
+    let smtpFromName = process.env.EMAIL_FROM_NAME || "Tecnologia Sonix";
+
+    try {
+      if (smtpSettings && smtpSettings.user && smtpSettings.pass) {
+        smtpHost = smtpSettings.host || smtpHost;
+        smtpPort = parseInt(smtpSettings.port || "465");
+        smtpUser = smtpSettings.user;
+        smtpPass = smtpSettings.pass;
+        smtpFromName = smtpSettings.fromName || smtpFromName;
+      } else if (userId && admin && admin.apps && admin.apps.length) {
+        const userDoc = await admin.firestore().collection('users').doc(userId).get();
+        if (userDoc.exists) {
+          const userSmtpSettings = userDoc.data()?.smtpSettings;
+          if (userSmtpSettings && userSmtpSettings.user && userSmtpSettings.pass) {
+            smtpHost = userSmtpSettings.host || smtpHost;
+            smtpPort = parseInt(userSmtpSettings.port || "465");
+            smtpUser = userSmtpSettings.user;
+            smtpPass = userSmtpSettings.pass;
+            smtpFromName = userSmtpSettings.fromName || smtpFromName;
+          }
+        }
+      }
+
+      if (!smtpUser || !smtpPass) {
+        return res.status(500).json({ error: "Configuración de email no encontrada. Por favor, configura tus credenciales SMTP en la sección de Configuración." });
+      }
+
+      const transporter = nodemailer.createTransport({
+        host: smtpHost,
+        port: smtpPort,
+        secure: smtpPort === 465,
+        auth: {
+          user: smtpUser,
+          pass: smtpPass,
+        },
+        tls: {
+          rejectUnauthorized: false
+        }
+      });
+
+      console.log(`[SMTP] Iniciando proceso de envío. Host: ${smtpHost}, Usuario: ${smtpUser}`);
+
+      // Verificar conexión antes de intentar enviar
+      try {
+        await transporter.verify();
+        console.log("[SMTP] Conexión verificada con éxito.");
+      } catch (verifyError) {
+        console.error("[SMTP] Error de autenticación/conexión:", verifyError);
+        return res.status(500).json({ 
+          error: "Error de autenticación SMTP. Revisa tus credenciales (Usuario y App Password).",
+          details: (verifyError as Error).message 
+        });
+      }
+
+      const fromEmail = smtpUser;
+
+      if (leads && Array.isArray(leads)) {
+        console.log(`[SMTP] Envío masivo detectado: ${leads.length} destinatarios`);
+        const results = [];
+        for (const lead of leads) {
+          let personalizedHtml = html
+            .replace(/\{\{name\}\}/g, lead.name || "amigo")
+            .replace(/\{\{business\}\}/g, lead.name || "tu negocio");
+
+          try {
+            await transporter.sendMail({
+              from: `"${smtpFromName}" <${fromEmail}>`,
+              to: lead.email,
+              subject: subject.replace(/\{\{business\}\}/g, lead.name || "tu negocio"),
+              html: personalizedHtml,
+            });
+            console.log(`[SMTP] Enviado con éxito a: ${lead.email}`);
+            results.push({ email: lead.email, status: "sent" });
+          } catch (err) {
+            console.error(`[SMTP] Error enviando a ${lead.email}:`, (err as Error).message);
+            results.push({ email: lead.email, status: "failed", error: (err as Error).message });
+          }
+          
+          // ANTIBLOQUEO: Esperar 3 segundos entre cada envío para evitar rate-limits
+          await new Promise(resolve => setTimeout(resolve, 3000));
+        }
+        return res.json({ success: true, results });
+      } else {
+        console.log(`[SMTP] Envío individual detectado a: ${to}`);
+        const info = await transporter.sendMail({
+          from: `"${smtpFromName}" <${fromEmail}>`,
+          to,
+          subject,
+          html,
+        });
+        console.log(`[SMTP] Enviado con éxito. ID: ${info.messageId}`);
+        return res.json({ success: true, messageId: info.messageId });
+      }
+    } catch (error) {
+      console.error("[SMTP] Error crítico en el controlador:", error);
+      res.status(500).json({ error: (error as Error).message });
+    }
+  });
+
+  // Configuración de Vite para desarrollo
+  if (process.env.NODE_ENV !== "production") {
+    const vite = await createViteServer({
+      server: { middlewareMode: true },
+      appType: "spa",
+    });
+    app.use(vite.middlewares);
+  } else {
+    const distPath = path.join(process.cwd(), "dist");
+    app.use(express.static(distPath));
+    app.get("*", (req, res) => {
+      res.sendFile(path.join(distPath, "index.html"));
+    });
+  }
+
+  app.listen(PORT, "0.0.0.0", () => {
+    console.log(`Servidor de Campañas corriendo en http://localhost:${PORT}`);
+  });
+}
+
+startServer();
