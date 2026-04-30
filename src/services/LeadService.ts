@@ -1,4 +1,4 @@
-import { GoogleGenAI, Type } from "@google/genai";
+import { GoogleGenerativeAI } from "@google/generative-ai";
 import { collection, addDoc, query, where, getDocs, serverTimestamp, orderBy, doc, deleteDoc, writeBatch } from "firebase/firestore";
 import { Lead } from "../types";
 import { db, auth } from "../lib/firebase";
@@ -39,22 +39,20 @@ function handleFirestoreError(error: unknown, operationType: OperationType, path
 }
 
 export class LeadService {
-  private ai: GoogleGenAI;
+  private ai: GoogleGenerativeAI | null = null;
 
   constructor() {
-    // En el navegador, Vite reemplaza process.env.GEMINI_API_KEY si está definido en el build
-    const apiKey = typeof process !== 'undefined' ? process.env?.GEMINI_API_KEY : (import.meta.env.VITE_GEMINI_API_KEY || '');
-    
-    // No lanzamos error aquí para evitar que la app entera se quede en blanco (white screen)
-    // El error se manejará cuando se intente usar el servicio.
-    this.ai = new GoogleGenAI({ apiKey: apiKey || 'missing_key' });
+    // No inicializamos aquí para evitar que un error de configuración bloquee toda la app
   }
 
-  private ensureApiKey() {
-    const apiKey = typeof process !== 'undefined' ? process.env?.GEMINI_API_KEY : (import.meta.env.VITE_GEMINI_API_KEY || '');
-    if (!apiKey || apiKey === 'missing_key') {
-      throw new Error("API Key de Gemini no configurada. Por favor, añádela a las variables de entorno de tu despliegue.");
+  private getAI() {
+    if (this.ai) return this.ai;
+    const apiKey = (typeof process !== 'undefined' ? process.env?.GEMINI_API_KEY : null) || (import.meta.env.VITE_GEMINI_API_KEY as string) || '';
+    if (!apiKey) {
+      throw new Error("API Key de Gemini no configurada. Por favor, añádela a las variables de entorno.");
     }
+    this.ai = new GoogleGenerativeAI(apiKey);
+    return this.ai;
   }
 
   async saveToFirestore(lead: Lead, userId: string): Promise<string> {
@@ -135,13 +133,6 @@ export class LeadService {
     const allLeads: Lead[] = [];
 
     // Procesamos cada código postal para asegurar máxima calidad por zona
-    try {
-      this.ensureApiKey();
-    } catch (e) {
-      alert((e as Error).message);
-      return [];
-    }
-
     for (const zip of zipCodes) {
       const prompt = `Actúa como un experto en Inteligencia de Ventas y OSINT. Tu misión es extraer una lista EXHAUSTIVA (al menos 40 si existen) de leads del tipo "${businessType}" en el código postal ${zip.trim()} de España.
       
@@ -154,31 +145,17 @@ export class LeadService {
       Responde ÚNICAMENTE con el JSON array solicitado.`;
 
       try {
-        const response = await this.ai.models.generateContent({
-          model: "gemini-3-flash-preview",
-          contents: prompt,
-          config: {
-            tools: [{ googleSearch: {} }],
+        const genAI = this.getAI();
+        const model = genAI.getGenerativeModel({ 
+          model: "gemini-2.0-flash",
+          generationConfig: {
             responseMimeType: "application/json",
-            responseSchema: {
-              type: Type.ARRAY,
-              items: {
-                type: Type.OBJECT,
-                properties: {
-                  name: { type: Type.STRING },
-                  address: { type: Type.STRING },
-                  phone: { type: Type.STRING },
-                  email: { type: Type.STRING },
-                  website: { type: Type.STRING },
-                  type: { type: Type.STRING }
-                },
-                required: ["name", "address"]
-              }
-            }
           }
         });
 
-        const text = response.text;
+        const result = await model.generateContent(prompt);
+        const text = result.response.text();
+        
         if (text) {
           const leads = JSON.parse(text);
           allLeads.push(...leads);
