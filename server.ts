@@ -159,17 +159,29 @@ async function startServer() {
       const ai = new GoogleGenAI({ apiKey });
       const response = await ai.models.generateContent({
         model: "gemini-1.5-flash",
-        contents: prompt,
+        contents: [{ role: 'user', parts: [{ text: prompt }] }],
         config: {
           responseMimeType: "application/json",
         }
       });
       
-      const text = response.text;
-      if (!text) {
-        throw new Error("No se obtuvo respuesta de Gemini");
+      const text = response.text || "";
+      
+      // Limpiar markdown si viene envuelto en ```json o similar
+      const cleanText = text.replace(/```json/g, "").replace(/```/g, "").trim();
+      
+      try {
+        const parsed = JSON.parse(cleanText);
+        res.json(parsed);
+      } catch (parseError) {
+        console.error("[Gemini API] Error al parsear JSON:", parseError);
+        console.error("[Gemini API] Texto recibido:", text);
+        res.status(500).json({ 
+          error: "Gemini no devolvió un JSON válido", 
+          details: (parseError as Error).message,
+          raw: text 
+        });
       }
-      res.json(JSON.parse(text));
     } catch (error) {
       console.error("[Gemini API] Error:", error);
       res.status(500).json({ error: (error as Error).message });
@@ -186,10 +198,14 @@ async function startServer() {
       const ai = new GoogleGenAI({ apiKey });
       const response = await ai.models.generateContent({
         model: "gemini-1.5-flash",
-        contents: prompt,
+        contents: [{ role: 'user', parts: [{ text: prompt }] }],
       });
-      const textResult = response.text?.trim() || 'No se pudo obtener información.';
-      res.json({ textResult });
+      const textResult = response.text || 'No se pudo obtener información.';
+      
+      // Intentar limpiar por si acaso viene con markdown aunque no se pidió JSON aquí explícitamente
+      const cleanResult = textResult.replace(/```json/g, "").replace(/```/g, "").trim();
+      
+      res.json({ textResult: cleanResult });
     } catch (error) {
       console.error("[Gemini Eval] Error:", error);
       res.status(500).json({ error: (error as Error).message });
@@ -224,14 +240,12 @@ ORDEN: ${promptDetails}`;
 
       const response = await ai.models.generateContent({
         model: 'gemini-1.5-flash',
-        contents: systemPrompt
+        contents: [{ role: 'user', parts: [{ text: systemPrompt }] }]
       });
       
       let html = response.text || '';
-      if (html.startsWith('```html')) {
-        html = html.replace(/^```html\n/, '').replace(/\n```$/, '');
-      }
-      res.json({ html: html.trim() });
+      html = html.replace(/```html/g, "").replace(/```/g, "").trim();
+      res.json({ html: html });
     } catch (error) {
       console.error("[Gemini Email] Error:", error);
       res.status(500).json({ error: (error as Error).message });
