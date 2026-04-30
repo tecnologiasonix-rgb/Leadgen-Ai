@@ -33,7 +33,13 @@ const stripe = process.env.STRIPE_SECRET_KEY
 
 async function startServer() {
   const app = express();
-  const PORT = process.env.PORT || 8080;
+  const PORT = process.env.PORT || 3000;
+
+  console.log(`[Diagnostic] NODE_ENV: ${process.env.NODE_ENV}`);
+  console.log(`[Diagnostic] GEMINI_API_KEY set: ${!!process.env.GEMINI_API_KEY}`);
+  if (process.env.GEMINI_API_KEY) {
+    console.log(`[Diagnostic] GEMINI_API_KEY starts with: ${process.env.GEMINI_API_KEY.substring(0, 4)}...`);
+  }
 
   // Ruta Webhook de Stripe (Debe usar express.raw ANTES de express.json para que funcione la verificación de la firma)
   app.post("/api/webhooks/stripe", express.raw({ type: 'application/json' }), async (req, res) => {
