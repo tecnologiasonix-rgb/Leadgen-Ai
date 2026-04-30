@@ -42,11 +42,19 @@ export class LeadService {
   private ai: GoogleGenAI;
 
   constructor() {
-    const apiKey = process.env.GEMINI_API_KEY;
-    if (!apiKey) {
-      throw new Error("GEMINI_API_KEY is not defined");
+    // En el navegador, Vite reemplaza process.env.GEMINI_API_KEY si está definido en el build
+    const apiKey = typeof process !== 'undefined' ? process.env?.GEMINI_API_KEY : (import.meta.env.VITE_GEMINI_API_KEY || '');
+    
+    // No lanzamos error aquí para evitar que la app entera se quede en blanco (white screen)
+    // El error se manejará cuando se intente usar el servicio.
+    this.ai = new GoogleGenAI({ apiKey: apiKey || 'missing_key' });
+  }
+
+  private ensureApiKey() {
+    const apiKey = typeof process !== 'undefined' ? process.env?.GEMINI_API_KEY : (import.meta.env.VITE_GEMINI_API_KEY || '');
+    if (!apiKey || apiKey === 'missing_key') {
+      throw new Error("API Key de Gemini no configurada. Por favor, añádela a las variables de entorno de tu despliegue.");
     }
-    this.ai = new GoogleGenAI({ apiKey });
   }
 
   async saveToFirestore(lead: Lead, userId: string): Promise<string> {
@@ -127,6 +135,13 @@ export class LeadService {
     const allLeads: Lead[] = [];
 
     // Procesamos cada código postal para asegurar máxima calidad por zona
+    try {
+      this.ensureApiKey();
+    } catch (e) {
+      alert((e as Error).message);
+      return [];
+    }
+
     for (const zip of zipCodes) {
       const prompt = `Actúa como un experto en Inteligencia de Ventas y OSINT. Tu misión es extraer una lista EXHAUSTIVA (al menos 40 si existen) de leads del tipo "${businessType}" en el código postal ${zip.trim()} de España.
       
