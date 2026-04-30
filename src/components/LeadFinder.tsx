@@ -78,8 +78,8 @@ export const LeadFinder: React.FC<LeadFinderProps> = ({
       const zipList = zipCode.split(/[, ]+/).filter(z => z.length >= 3);
       const results = await leadService.searchLeads(zipList, businessType);
       setLeads(results);
-    } catch (err: any) {
-      setError(err.message || 'Error al buscar leads.');
+    } catch (err) {
+      setError('Error al buscar leads.');
       console.error(err);
     } finally {
       setIsLoading(false);

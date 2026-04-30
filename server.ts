@@ -5,6 +5,7 @@ import nodemailer from "nodemailer";
 import dotenv from "dotenv";
 import Stripe from "stripe";
 import admin from "firebase-admin";
+import { GoogleGenAI } from "@google/genai";
 
 dotenv.config();
 
@@ -143,6 +144,97 @@ async function startServer() {
     // Añadimos esto para asegurar compatibilidad con servidores que requieren TLS
     tls: {
       rejectUnauthorized: false
+    }
+  });
+
+  // API Proxy para Gemini
+  app.post("/api/generate-leads", async (req, res) => {
+    const apiKey = process.env.GEMINI_API_KEY;
+    if (!apiKey) {
+      return res.status(500).json({ error: "API Key de Gemini no configurada en el servidor." });
+    }
+    
+    try {
+      const { prompt } = req.body;
+      const ai = new GoogleGenAI({ apiKey });
+      const response = await ai.models.generateContent({
+        model: "gemini-1.5-flash",
+        contents: prompt,
+        config: {
+          responseMimeType: "application/json",
+        }
+      });
+      
+      const text = response.text;
+      if (!text) {
+        throw new Error("No se obtuvo respuesta de Gemini");
+      }
+      res.json(JSON.parse(text));
+    } catch (error) {
+      console.error("[Gemini API] Error:", error);
+      res.status(500).json({ error: (error as Error).message });
+    }
+  });
+
+  app.post("/api/evaluate-lead", async (req, res) => {
+    const apiKey = process.env.GEMINI_API_KEY;
+    if (!apiKey) {
+      return res.status(500).json({ error: "API Key de Gemini no configurada" });
+    }
+    try {
+      const { prompt } = req.body;
+      const ai = new GoogleGenAI({ apiKey });
+      const response = await ai.models.generateContent({
+        model: "gemini-1.5-flash",
+        contents: prompt,
+      });
+      const textResult = response.text?.trim() || 'No se pudo obtener información.';
+      res.json({ textResult });
+    } catch (error) {
+      console.error("[Gemini Eval] Error:", error);
+      res.status(500).json({ error: (error as Error).message });
+    }
+  });
+
+  app.post("/api/generate-email", async (req, res) => {
+    const apiKey = process.env.GEMINI_API_KEY;
+    if (!apiKey) {
+      return res.status(500).json({ error: "API Key de Gemini no configurada" });
+    }
+    try {
+      const { promptDetails, currentHtml } = req.body;
+      const ai = new GoogleGenAI({ apiKey });
+
+      const onixRules = `Somos "Tecnologías Onix". Nuestro sitio web es tecnologiasonix.com.
+Nos gustan los emails limpios y profesionales. El marketing debe ser poco agresivo, con un trato cercano. Muestra de forma clara los beneficios para el cliente en relación al producto o promoción. Sé conciso y al grano.`;
+
+      const systemPrompt = currentHtml ? `Eres un experto en marketing y diseño de correos electrónicos. Tu tarea es modificar la siguiente plantilla HTML basándote en la orden del usuario.
+PLANTILLA ACTUAL:
+\`\`\`html
+${currentHtml}
+\`\`\`
+
+Debes devolver EXCLUSIVAMENTE el nuevo código HTML completo, sin markdown, sin introducciones ni conclusiones. Mantén los estilos inline y que sea responsivo. Usa variables como {{name}} y {{business}} cuando hables con el cliente.
+${onixRules}
+ORDEN: ${promptDetails}` : `Eres un experto en marketing y diseño de correos electrónicos. Crea una nueva plantilla HTML para un correo en frío para vender tecnología a negocios de hostelería, basándote en lo que el usuario pida. 
+La estructura del HTML debe ser tabular, compatible con email, moderna, minimalista parecida a las actuales, responsiva y que ocupe de manera óptima la pantalla sin márgenes artificiales. Usa variables {{name}} y {{business}}.
+${onixRules}
+No uses markdown para envolver tu respuesta. Devuelve SOLO código HTML.
+ORDEN: ${promptDetails}`;
+
+      const response = await ai.models.generateContent({
+        model: 'gemini-1.5-flash',
+        contents: systemPrompt
+      });
+      
+      let html = response.text || '';
+      if (html.startsWith('```html')) {
+        html = html.replace(/^```html\n/, '').replace(/\n```$/, '');
+      }
+      res.json({ html: html.trim() });
+    } catch (error) {
+      console.error("[Gemini Email] Error:", error);
+      res.status(500).json({ error: (error as Error).message });
     }
   });
 

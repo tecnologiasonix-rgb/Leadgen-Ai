@@ -1,5 +1,4 @@
 import { collection, addDoc, query, where, getDocs, serverTimestamp, orderBy, doc, deleteDoc, writeBatch } from "firebase/firestore";
-import { AIService } from "./aiService";
 import { Lead } from "../types";
 import { db, auth } from "../lib/firebase";
 
@@ -131,7 +130,15 @@ export class LeadService {
       Responde ÚNICAMENTE con el JSON array solicitado.`;
 
       try {
-        const leads = await AIService.generateLeads(prompt);
+        const response = await fetch('/api/generate-leads', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ prompt })
+        });
+        
+        if (!response.ok) throw new Error("Error al consultar Gemini");
+
+        const leads = await response.json();
         if (leads && Array.isArray(leads)) {
           allLeads.push(...leads);
         }
