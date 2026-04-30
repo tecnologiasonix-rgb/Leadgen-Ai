@@ -1,4 +1,3 @@
-import { GoogleGenAI } from "@google/genai";
 import { collection, addDoc, query, where, getDocs, serverTimestamp, orderBy, doc, deleteDoc, writeBatch } from "firebase/firestore";
 import { Lead } from "../types";
 import { db, auth } from "../lib/firebase";
@@ -39,21 +38,7 @@ function handleFirestoreError(error: unknown, operationType: OperationType, path
 }
 
 export class LeadService {
-  private ai: GoogleGenAI | null = null;
-
-  constructor() {
-    // No inicializamos aquí para evitar que un error de configuración bloquee toda la app
-  }
-
-  private getAI() {
-    if (this.ai) return this.ai;
-    const apiKey = (typeof process !== 'undefined' ? process.env?.GEMINI_API_KEY : null) || (import.meta.env.VITE_GEMINI_API_KEY as string) || '';
-    if (!apiKey) {
-      throw new Error("API Key de Gemini no configurada. Por favor, añádela a las variables de entorno.");
-    }
-    this.ai = new GoogleGenAI({ apiKey });
-    return this.ai;
-  }
+  constructor() {}
 
   async saveToFirestore(lead: Lead, userId: string): Promise<string> {
     const path = "leads";
@@ -145,19 +130,16 @@ export class LeadService {
       Responde ÚNICAMENTE con el JSON array solicitado.`;
 
       try {
-        const ai = this.getAI();
-        const response = await ai.models.generateContent({
-          model: "gemini-1.5-flash",
-          contents: prompt,
-          config: {
-            responseMimeType: "application/json",
-          }
+        const response = await fetch('/api/generate-leads', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ prompt })
         });
-
-        const text = response.text;
         
-        if (text) {
-          const leads = JSON.parse(text);
+        if (!response.ok) throw new Error("Error al consultar Gemini");
+
+        const leads = await response.json();
+        if (leads && Array.isArray(leads)) {
           allLeads.push(...leads);
         }
       } catch (error) {
