@@ -1,4 +1,4 @@
-import { GoogleGenerativeAI } from "@google/generative-ai";
+import { GoogleGenAI } from "@google/genai";
 import { collection, addDoc, query, where, getDocs, serverTimestamp, orderBy, doc, deleteDoc, writeBatch } from "firebase/firestore";
 import { Lead } from "../types";
 import { db, auth } from "../lib/firebase";
@@ -39,7 +39,7 @@ function handleFirestoreError(error: unknown, operationType: OperationType, path
 }
 
 export class LeadService {
-  private ai: GoogleGenerativeAI | null = null;
+  private ai: GoogleGenAI | null = null;
 
   constructor() {
     // No inicializamos aquí para evitar que un error de configuración bloquee toda la app
@@ -51,7 +51,7 @@ export class LeadService {
     if (!apiKey) {
       throw new Error("API Key de Gemini no configurada. Por favor, añádela a las variables de entorno.");
     }
-    this.ai = new GoogleGenerativeAI(apiKey);
+    this.ai = new GoogleGenAI({ apiKey });
     return this.ai;
   }
 
@@ -145,16 +145,16 @@ export class LeadService {
       Responde ÚNICAMENTE con el JSON array solicitado.`;
 
       try {
-        const genAI = this.getAI();
-        const model = genAI.getGenerativeModel({ 
-          model: "gemini-2.0-flash",
-          generationConfig: {
+        const ai = this.getAI();
+        const response = await ai.models.generateContent({
+          model: "gemini-1.5-flash",
+          contents: prompt,
+          config: {
             responseMimeType: "application/json",
           }
         });
 
-        const result = await model.generateContent(prompt);
-        const text = result.response.text();
+        const text = response.text;
         
         if (text) {
           const leads = JSON.parse(text);
