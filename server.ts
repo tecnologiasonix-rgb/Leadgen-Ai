@@ -32,7 +32,7 @@ const stripe = process.env.STRIPE_SECRET_KEY
 
 async function startServer() {
   const app = express();
-  const PORT = process.env.PORT || 3000;
+  const PORT = process.env.PORT || 8080;
 
   // Ruta Webhook de Stripe (Debe usar express.raw ANTES de express.json para que funcione la verificación de la firma)
   app.post("/api/webhooks/stripe", express.raw({ type: 'application/json' }), async (req, res) => {
@@ -248,10 +248,21 @@ async function startServer() {
     });
     app.use(vite.middlewares);
   } else {
-    const distPath = path.join(process.cwd(), "dist");
+    // Servir archivos estáticos en producción
+    const distPath = path.resolve(process.cwd(), "dist");
+    console.log(`[Server] Sirviendo archivos estáticos desde: ${distPath}`);
+    
     app.use(express.static(distPath));
+    
     app.get("*", (req, res) => {
-      res.sendFile(path.join(distPath, "index.html"));
+      const indexPath = path.join(distPath, "index.html");
+      console.log(`[Server] Petición recibida, sirviendo: ${indexPath}`);
+      res.sendFile(indexPath, (err) => {
+        if (err) {
+          console.error("[Server] Error al enviar index.html:", err);
+          res.status(500).send("Error cargando la aplicación. Por favor, revisa los logs del servidor.");
+        }
+      });
     });
   }
 
