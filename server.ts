@@ -5,6 +5,7 @@ import nodemailer from "nodemailer";
 import dotenv from "dotenv";
 import Stripe from "stripe";
 import admin from "firebase-admin";
+import { GoogleGenAI } from "@google/genai";
 
 dotenv.config();
 
@@ -130,6 +131,35 @@ async function startServer() {
     // Añadimos esto para asegurar compatibilidad con servidores que requieren TLS
     tls: {
       rejectUnauthorized: false
+    }
+  });
+
+  // API Proxy para Gemini
+  app.post("/api/generate-leads", async (req, res) => {
+    const apiKey = process.env.GEMINI_API_KEY;
+    if (!apiKey) {
+      return res.status(500).json({ error: "API Key de Gemini no configurada en el servidor." });
+    }
+    
+    try {
+      const { prompt } = req.body;
+      const ai = new GoogleGenAI({ apiKey });
+      const response = await ai.models.generateContent({
+        model: "gemini-1.5-flash",
+        contents: prompt,
+        config: {
+          responseMimeType: "application/json",
+        }
+      });
+      
+      const text = response.text;
+      if (!text) {
+        throw new Error("No se obtuvo respuesta de Gemini");
+      }
+      res.json(JSON.parse(text));
+    } catch (error) {
+      console.error("[Gemini API] Error:", error);
+      res.status(500).json({ error: (error as Error).message });
     }
   });
 
