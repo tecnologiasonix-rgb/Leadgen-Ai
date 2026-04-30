@@ -5,7 +5,6 @@ import nodemailer from "nodemailer";
 import dotenv from "dotenv";
 import Stripe from "stripe";
 import admin from "firebase-admin";
-import { GoogleGenAI } from "@google/genai";
 
 dotenv.config();
 
@@ -144,118 +143,6 @@ async function startServer() {
     // Añadimos esto para asegurar compatibilidad con servidores que requieren TLS
     tls: {
       rejectUnauthorized: false
-    }
-  });
-
-  // API Proxy para Gemini
-  app.post("/api/generate-leads", async (req, res) => {
-    const apiKey = process.env.GEMINI_API_KEY;
-    if (!apiKey) {
-      return res.status(500).json({ error: "API Key de Gemini no configurada en el servidor." });
-    }
-    
-    try {
-      const { prompt } = req.body;
-      const ai = new GoogleGenAI({ apiKey });
-      const response = await ai.models.generateContent({
-        model: "gemini-1.5-flash",
-        contents: [{ role: 'user', parts: [{ text: prompt }] }],
-        generationConfig: {
-          responseMimeType: "application/json",
-        }
-      });
-      
-      const text = response.text || "";
-      
-      // Limpiar markdown si viene envuelto en ```json o similar
-      const cleanText = text.replace(/```json/g, "").replace(/```/g, "").trim();
-      
-      try {
-        const parsed = JSON.parse(cleanText);
-        res.json(parsed);
-      } catch (parseError) {
-        console.error("[Gemini API] Error al parsear JSON:", parseError);
-        console.error("[Gemini API] Texto recibido (raw):", text);
-        res.status(500).json({ 
-          error: "Gemini no devolvió un JSON válido", 
-          details: (parseError as Error).message,
-          raw: text 
-        });
-      }
-    } catch (error: any) {
-      console.error("[Gemini API] Error Crítico:", error);
-      // Enviar más detalles al frontend para diagnóstico
-      const errorMessage = error.message || "Error desconocido en Gemini";
-      const isAuthError = errorMessage.toLowerCase().includes("api key") || errorMessage.toLowerCase().includes("auth");
-      
-      res.status(500).json({ 
-        error: isAuthError ? "Error de autenticación: Revisa tu GEMINI_API_KEY en Cloud Run" : "Error al consultar Gemini",
-        message: errorMessage
-      });
-    }
-  });
-
-  app.post("/api/evaluate-lead", async (req, res) => {
-    const apiKey = process.env.GEMINI_API_KEY;
-    if (!apiKey) {
-      return res.status(500).json({ error: "API Key de Gemini no configurada" });
-    }
-    try {
-      const { prompt } = req.body;
-      const ai = new GoogleGenAI({ apiKey });
-      const response = await ai.models.generateContent({
-        model: "gemini-1.5-flash",
-        contents: [{ role: 'user', parts: [{ text: prompt }] }],
-      });
-      const textResult = response.text || 'No se pudo obtener información.';
-      
-      // Intentar limpiar por si acaso viene con markdown aunque no se pidió JSON aquí explícitamente
-      const cleanResult = textResult.replace(/```json/g, "").replace(/```/g, "").trim();
-      
-      res.json({ textResult: cleanResult });
-    } catch (error) {
-      console.error("[Gemini Eval] Error:", error);
-      res.status(500).json({ error: (error as Error).message });
-    }
-  });
-
-  app.post("/api/generate-email", async (req, res) => {
-    const apiKey = process.env.GEMINI_API_KEY;
-    if (!apiKey) {
-      return res.status(500).json({ error: "API Key de Gemini no configurada" });
-    }
-    try {
-      const { promptDetails, currentHtml } = req.body;
-      const ai = new GoogleGenAI({ apiKey });
-
-      const onixRules = `Somos "Tecnologías Onix". Nuestro sitio web es tecnologiasonix.com.
-Nos gustan los emails limpios y profesionales. El marketing debe ser poco agresivo, con un trato cercano. Muestra de forma clara los beneficios para el cliente en relación al producto o promoción. Sé conciso y al grano.`;
-
-      const systemPrompt = currentHtml ? `Eres un experto en marketing y diseño de correos electrónicos. Tu tarea es modificar la siguiente plantilla HTML basándote en la orden del usuario.
-PLANTILLA ACTUAL:
-\`\`\`html
-${currentHtml}
-\`\`\`
-
-Debes devolver EXCLUSIVAMENTE el nuevo código HTML completo, sin markdown, sin introducciones ni conclusiones. Mantén los estilos inline y que sea responsivo. Usa variables como {{name}} y {{business}} cuando hables con el cliente.
-${onixRules}
-ORDEN: ${promptDetails}` : `Eres un experto en marketing y diseño de correos electrónicos. Crea una nueva plantilla HTML para un correo en frío para vender tecnología a negocios de hostelería, basándote en lo que el usuario pida. 
-La estructura del HTML debe ser tabular, compatible con email, moderna, minimalista parecida a las actuales, responsiva y que ocupe de manera óptima la pantalla sin márgenes artificiales. Usa variables {{name}} y {{business}}.
-${onixRules}
-No uses markdown para envolver tu respuesta. Devuelve SOLO código HTML.
-ORDEN: ${promptDetails}`;
-
-      const response = await ai.models.generateContent({
-        model: 'gemini-1.5-flash',
-        contents: [{ role: 'user', parts: [{ text: systemPrompt }] }]
-      });
-      
-      let html = response.text || '';
-      html = html.replace(/```html/g, "").replace(/```/g, "").trim();
-      res.json({ html: html });
-    } catch (error) {
-      console.error("[Gemini Email] Error:", error);
-      res.status(500).json({ error: (error as Error).message });
     }
   });
 

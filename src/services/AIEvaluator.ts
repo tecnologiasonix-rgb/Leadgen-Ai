@@ -1,3 +1,4 @@
+import { AIService } from './aiService';
 import { Lead } from '../types';
 import { updateDoc, doc } from 'firebase/firestore';
 import { db } from '../lib/firebase';
@@ -71,15 +72,7 @@ ${evalInstructions}
 Dame SOLO el texto de la nota resultante sin saludos ni introducciones, formato texto plano.
 `;
 
-      const response = await fetch('/api/evaluate-lead', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ prompt })
-      });
-
-      if (!response.ok) throw new Error("Error al consultar Gemini en el servidor");
-      
-      const { textResult } = await response.json();
+      const textResult = await AIService.evaluateLead(prompt);
 
       if (lead.id) {
         await updateDoc(doc(db, 'leads', lead.id), { 
@@ -100,16 +93,7 @@ Dame SOLO el texto de la nota resultante sin saludos ni introducciones, formato 
   static async generateEmailTemplate(promptDetails: string, currentHtml?: string): Promise<string> {
     
     try {
-      const response = await fetch('/api/generate-email', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ promptDetails, currentHtml })
-      });
-
-      if (!response.ok) throw new Error("Error al consultar Gemini en el servidor");
-      
-      const { html } = await response.json();
-      return html;
+      return await AIService.generateEmail(promptDetails, currentHtml);
     } catch (error) {
       console.error('Error generating email template:', error);
       throw error;
