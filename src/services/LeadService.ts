@@ -136,7 +136,10 @@ export class LeadService {
           body: JSON.stringify({ prompt })
         });
         
-        if (!response.ok) throw new Error("Error al consultar Gemini");
+        if (!response.ok) {
+          const errorData = await response.json().catch(() => ({}));
+          throw new Error(errorData.message || errorData.error || "Error al consultar Gemini");
+        }
 
         const leads = await response.json();
         if (leads && Array.isArray(leads)) {

@@ -160,7 +160,7 @@ async function startServer() {
       const response = await ai.models.generateContent({
         model: "gemini-1.5-flash",
         contents: [{ role: 'user', parts: [{ text: prompt }] }],
-        config: {
+        generationConfig: {
           responseMimeType: "application/json",
         }
       });
@@ -175,16 +175,23 @@ async function startServer() {
         res.json(parsed);
       } catch (parseError) {
         console.error("[Gemini API] Error al parsear JSON:", parseError);
-        console.error("[Gemini API] Texto recibido:", text);
+        console.error("[Gemini API] Texto recibido (raw):", text);
         res.status(500).json({ 
           error: "Gemini no devolvió un JSON válido", 
           details: (parseError as Error).message,
           raw: text 
         });
       }
-    } catch (error) {
-      console.error("[Gemini API] Error:", error);
-      res.status(500).json({ error: (error as Error).message });
+    } catch (error: any) {
+      console.error("[Gemini API] Error Crítico:", error);
+      // Enviar más detalles al frontend para diagnóstico
+      const errorMessage = error.message || "Error desconocido en Gemini";
+      const isAuthError = errorMessage.toLowerCase().includes("api key") || errorMessage.toLowerCase().includes("auth");
+      
+      res.status(500).json({ 
+        error: isAuthError ? "Error de autenticación: Revisa tu GEMINI_API_KEY en Cloud Run" : "Error al consultar Gemini",
+        message: errorMessage
+      });
     }
   });
 
