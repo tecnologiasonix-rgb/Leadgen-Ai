@@ -15,15 +15,11 @@ COPY . .
 # Construir la parte de React (dist/)
 RUN npm run build
 
-# Opcional: Podrías limpiar devDependencies, pero tsx las necesita para correr el servidor TS
-# Si prefieres seguridad total, podrías mover tsx a dependencies en package.json
-
-# Exponer el puerto
-EXPOSE 3000
+# Exponer el puerto predeterminado de Cloud Run
+EXPOSE 8080
 
 # Variables de entorno
 ENV NODE_ENV=production
-# El puerto lo pondremos dinámico en server.ts, pero 8080 es el estándar de Cloud Run
 ENV PORT=8080
 
 # Arrancar el servidor

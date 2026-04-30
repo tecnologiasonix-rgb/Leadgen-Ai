@@ -1,9 +1,6 @@
-import { GoogleGenAI } from '@google/genai';
 import { Lead } from '../types';
 import { updateDoc, doc } from 'firebase/firestore';
 import { db } from '../lib/firebase';
-
-const ai = new GoogleGenAI({ apiKey: process.env.GEMINI_API_KEY });
 
 export interface AIEvalProfile {
   id: string;
@@ -74,14 +71,15 @@ ${evalInstructions}
 Dame SOLO el texto de la nota resultante sin saludos ni introducciones, formato texto plano.
 `;
 
-      const response = await ai.models.generateContent({
-        model: 'gemini-3.1-pro-preview',
-        contents: prompt,
-        // @ts-ignore - The types in this version of the SDK might not include tools yet
-        tools: [{ googleSearch: {} }]
+      const response = await fetch('/api/evaluate-lead', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ prompt })
       });
 
-      const textResult = response.text?.trim() || 'No se pudo obtener información.';
+      if (!response.ok) throw new Error("Error al consultar Gemini en el servidor");
+      
+      const { textResult } = await response.json();
 
       if (lead.id) {
         await updateDoc(doc(db, 'leads', lead.id), { 
@@ -100,35 +98,18 @@ Dame SOLO el texto de la nota resultante sin saludos ni introducciones, formato 
   }
 
   static async generateEmailTemplate(promptDetails: string, currentHtml?: string): Promise<string> {
-    const onixRules = `Somos "Tecnologías Onix". Nuestro sitio web es tecnologiasonix.com.
-Nos gustan los emails limpios y profesionales. El marketing debe ser poco agresivo, con un trato cercano. Muestra de forma clara los beneficios para el cliente en relación al producto o promoción. Sé conciso y al grano.`;
-
-    const systemPrompt = currentHtml ? `Eres un experto en marketing y diseño de correos electrónicos. Tu tarea es modificar la siguiente plantilla HTML basándote en la orden del usuario.
-PLANTILLA ACTUAL:
-\`\`\`html
-${currentHtml}
-\`\`\`
-
-Debes devolver EXCLUSIVAMENTE el nuevo código HTML completo, sin markdown, sin introducciones ni conclusiones. Mantén los estilos inline y que sea responsivo. Usa variables como {{name}} y {{business}} cuando hables con el cliente. Si te pide que la plantilla ocupe todo el ancho de la pantalla y no tenga espacios, ajusta el body, table y padding (ej. .wrapper { padding: 0 }, max-width: 100%, etc.).
-${onixRules}
-ORDEN: ${promptDetails}` : `Eres un experto en marketing y diseño de correos electrónicos. Crea una nueva plantilla HTML para un correo en frío para vender tecnología a negocios de hostelería, basándote en lo que el usuario pida. 
-La estructura del HTML debe ser tabular, compatible con email, moderna, minimalista parecida a las actuales, responsiva y que ocupe de manera óptima la pantalla sin márgenes artificiales que lo hagan ver estrecho en el móvil. Usa variables {{name}} y {{business}}.
-${onixRules}
-No uses markdown para envolver tu respuesta. Devuelve SOLO código HTML.
-ORDEN: ${promptDetails}`;
-
+    
     try {
-      const response = await ai.models.generateContent({
-        model: 'gemini-3.1-pro-preview',
-        contents: systemPrompt
+      const response = await fetch('/api/generate-email', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ promptDetails, currentHtml })
       });
+
+      if (!response.ok) throw new Error("Error al consultar Gemini en el servidor");
       
-      let html = response.text || '';
-      // Limpiar posibles bloques de markdown si el modelo los añade a pesar de la orden
-      if (html.startsWith('```html')) {
-        html = html.replace(/^```html\n/, '').replace(/\n```$/, '');
-      }
-      return html.trim();
+      const { html } = await response.json();
+      return html;
     } catch (error) {
       console.error('Error generating email template:', error);
       throw error;
