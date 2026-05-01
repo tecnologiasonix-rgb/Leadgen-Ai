@@ -156,7 +156,7 @@ async function startServer() {
       const { prompt } = req.body;
       const ai = new GoogleGenAI({ apiKey });
       const response = await ai.models.generateContent({
-        model: "gemini-1.5-flash",
+        model: "gemini-3.1-flash-lite-preview",
         contents: prompt,
         config: { 
           responseMimeType: "application/json",
@@ -203,7 +203,7 @@ async function startServer() {
       const { prompt } = req.body;
       const ai = new GoogleGenAI({ apiKey });
       const response = await ai.models.generateContent({
-        model: "gemini-1.5-flash",
+        model: "gemini-3.1-flash-lite-preview",
         contents: prompt,
       });
       const textResult = response.text?.trim() || 'No se pudo obtener información.';
@@ -227,7 +227,7 @@ async function startServer() {
         ? `Eres un experto en marketing y diseño de correos electrónicos. Tu tarea es modificar la siguiente plantilla HTML basándote en la orden del usuario.\nPLANTILLA ACTUAL:\n\`\`\`html\n${currentHtml}\n\`\`\`\n\nDevuelve EXCLUSIVAMENTE el nuevo HTML completo, sin markdown. Mantén estilos inline y responsivo. Usa variables {{name}} y {{business}}.\n${onixRules}\nORDEN: ${promptDetails}`
         : `Eres un experto en marketing y diseño de correos electrónicos. Crea una plantilla HTML para email en frío para vender tecnología a negocios de hostelería. Estructura tabular, compatible con email, moderna, responsiva. Usa variables {{name}} y {{business}}.\n${onixRules}\nDevuelve SOLO código HTML.\nORDEN: ${promptDetails}`;
       const response = await ai.models.generateContent({
-        model: 'gemini-1.5-flash',
+        model: 'gemini-3.1-flash-lite-preview',
         contents: systemPrompt
       });
       let html = response.text || '';
