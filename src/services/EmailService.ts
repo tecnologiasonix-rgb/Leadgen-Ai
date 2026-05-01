@@ -77,6 +77,10 @@ export const EMAIL_TEMPLATES = [
               <p style="margin: 0; font-size: 16px; line-height: 1.6; color: #4b5563;">
                 Hola <strong>{{name}}</strong>, somos <strong>Tecnologías Onix</strong>. Modernizamos negocios de hostelería con sistemas digitales que aumentan tu facturación y reducen la carga de trabajo de tu equipo.
               </p>
+              <div style="margin-top: 20px; padding: 15px; background-color: #fefce8; border-left: 4px solid #facc15; font-size: 14px; color: #854d0e; font-style: italic;">
+                <strong>Nota personalizada de nuestro Agente IA:</strong><br>
+                {{notes}}
+              </div>
             </td>
           </tr>
           <tr>
@@ -189,6 +193,10 @@ export const EMAIL_TEMPLATES = [
               <p style="margin: 0; font-size: 16px; line-height: 1.6; color: #4b5563;">
                 Hola <strong>{{name}}</strong>, creamos páginas web profesionales para hostelería y optimizamos tu ficha de Google Maps para que la gente te encuentre de inmediato y dejen de irse a tu competencia.
               </p>
+              <div style="margin-top: 20px; padding: 15px; background-color: #f0fdf4; border-left: 4px solid #22c55e; font-size: 14px; color: #166534; font-style: italic;">
+                <strong>Observación sobre tu presencia digital:</strong><br>
+                {{notes}}
+              </div>
             </td>
           </tr>
           <tr>

@@ -91,15 +91,8 @@ export const LeadFinder: React.FC<LeadFinderProps> = ({
     setIsSaving(true);
     try {
       const { UserService } = await import('../services/UserService');
-      const subscription = await UserService.getUserSubscription(user.uid);
-      const limitRemaining = subscription.leadsLimit - subscription.leadsUsed;
+      // No limit checks anymore
       
-      if (selectedLeads.length > limitRemaining) {
-        alert(`Límite de plan ${subscription.plan.toUpperCase()} alcanzado.\n\nIntentas guardar ${selectedLeads.length} leads pero solo te quedan ${limitRemaining} disponibles. \n\n¡Actualiza tu plan en la sección Planes para continuar!`);
-        setIsSaving(false);
-        return;
-      }
-
       for (const idx of selectedLeads) {
         await leadService.saveToFirestore(leads[idx], user.uid);
       }

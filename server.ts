@@ -33,19 +33,19 @@ const stripe = process.env.STRIPE_SECRET_KEY
 
 async function startServer() {
   const app = express();
-  const PORT = process.env.PORT || 3000;
+  const PORT = 3000;
 
-  console.log(`[Diagnostic] NODE_ENV: ${process.env.NODE_ENV}`);
-  console.log(`[Diagnostic] GEMINI_API_KEY set: ${!!process.env.GEMINI_API_KEY}`);
-  if (process.env.GEMINI_API_KEY) {
-    console.log(`[Diagnostic] GEMINI_API_KEY starts with: ${process.env.GEMINI_API_KEY.substring(0, 4)}...`);
-  }
-
-  // Middleware para CORS y COOP (Ayuda con los popups de Firebase Auth)
-  app.use((req, res, next) => {
-    res.setHeader("Cross-Origin-Opener-Policy", "same-origin-allow-popups");
-    // También es una buena práctica habilitar COEP si se requiere, pero por ahora COOP es lo que pide el error
-    next();
+  // API routes FIRST
+  app.get("/api/health", (req, res) => {
+    res.json({ 
+      status: "ok",
+      env: {
+        GEMINI_API_KEY_CONFIGURED: !!process.env.GEMINI_API_KEY,
+        STRIPE_SECRET_CONFIGURED: !!process.env.STRIPE_SECRET_KEY,
+        FIREBASE_ADMIN_CONFIGURED: !!process.env.FIREBASE_SERVICE_ACCOUNT,
+        SMTP_CONFIGURED: !!(process.env.EMAIL_USER && process.env.EMAIL_PASS)
+      }
+    });
   });
 
   // Ruta Webhook de Stripe (Debe usar express.raw ANTES de express.json para que funcione la verificación de la firma)
@@ -108,9 +108,9 @@ async function startServer() {
             const userDoc = usersSnapshot.docs[0];
             await userDoc.ref.update({
               subscriptionStatus: subscription.status,
-              // Si se cancela/elimina, puedes pasarlo a 'startup' o plan gratuito
-              plan: subscription.status === 'active' ? userDoc.data().plan : 'free',
-              leadsLimit: subscription.status === 'active' ? userDoc.data().leadsLimit : 3,
+              // Si se cancela/elimina, pasamos a plan enterprise con límites altos
+              plan: subscription.status === 'active' ? userDoc.data().plan : 'enterprise',
+              leadsLimit: subscription.status === 'active' ? userDoc.data().leadsLimit : 999999,
               updatedAt: admin.firestore.FieldValue.serverTimestamp()
             });
             console.log(`[Stripe Webhook] Suscripción actualizada para ${userDoc.id}: ${subscription.status}`);
@@ -147,28 +147,21 @@ async function startServer() {
     }
   });
 
-  // API Proxy para Gemini
   app.post("/api/generate-leads", async (req, res) => {
     const apiKey = process.env.GEMINI_API_KEY;
     if (!apiKey) {
       return res.status(500).json({ error: "API Key de Gemini no configurada en el servidor." });
     }
-    
     try {
       const { prompt } = req.body;
       const ai = new GoogleGenAI({ apiKey });
       const response = await ai.models.generateContent({
         model: "gemini-1.5-flash",
         contents: prompt,
-        config: {
-          responseMimeType: "application/json",
-        }
+        config: { responseMimeType: "application/json" }
       });
-      
       const text = response.text;
-      if (!text) {
-        throw new Error("No se obtuvo respuesta de Gemini");
-      }
+      if (!text) throw new Error("No se obtuvo respuesta de Gemini");
       res.json(JSON.parse(text));
     } catch (error) {
       console.error("[Gemini API] Error:", error);
@@ -204,29 +197,14 @@ async function startServer() {
     try {
       const { promptDetails, currentHtml } = req.body;
       const ai = new GoogleGenAI({ apiKey });
-
-      const onixRules = `Somos "Tecnologías Onix". Nuestro sitio web es tecnologiasonix.com.
-Nos gustan los emails limpios y profesionales. El marketing debe ser poco agresivo, con un trato cercano. Muestra de forma clara los beneficios para el cliente en relación al producto o promoción. Sé conciso y al grano.`;
-
-      const systemPrompt = currentHtml ? `Eres un experto en marketing y diseño de correos electrónicos. Tu tarea es modificar la siguiente plantilla HTML basándote en la orden del usuario.
-PLANTILLA ACTUAL:
-\`\`\`html
-${currentHtml}
-\`\`\`
-
-Debes devolver EXCLUSIVAMENTE el nuevo código HTML completo, sin markdown, sin introducciones ni conclusiones. Mantén los estilos inline y que sea responsivo. Usa variables como {{name}} y {{business}} cuando hables con el cliente.
-${onixRules}
-ORDEN: ${promptDetails}` : `Eres un experto en marketing y diseño de correos electrónicos. Crea una nueva plantilla HTML para un correo en frío para vender tecnología a negocios de hostelería, basándote en lo que el usuario pida. 
-La estructura del HTML debe ser tabular, compatible con email, moderna, minimalista parecida a las actuales, responsiva y que ocupe de manera óptima la pantalla sin márgenes artificiales. Usa variables {{name}} y {{business}}.
-${onixRules}
-No uses markdown para envolver tu respuesta. Devuelve SOLO código HTML.
-ORDEN: ${promptDetails}`;
-
+      const onixRules = `Somos "Tecnologías Onix". Nuestro sitio web es tecnologiasonix.com.\nNos gustan los emails limpios y profesionales. El marketing debe ser poco agresivo, con un trato cercano. Muestra de forma clara los beneficios para el cliente en relación al producto o promoción. Sé conciso y al grano.`;
+      const systemPrompt = currentHtml
+        ? `Eres un experto en marketing y diseño de correos electrónicos. Tu tarea es modificar la siguiente plantilla HTML basándote en la orden del usuario.\nPLANTILLA ACTUAL:\n\`\`\`html\n${currentHtml}\n\`\`\`\n\nDevuelve EXCLUSIVAMENTE el nuevo HTML completo, sin markdown. Mantén estilos inline y responsivo. Usa variables {{name}} y {{business}}.\n${onixRules}\nORDEN: ${promptDetails}`
+        : `Eres un experto en marketing y diseño de correos electrónicos. Crea una plantilla HTML para email en frío para vender tecnología a negocios de hostelería. Estructura tabular, compatible con email, moderna, responsiva. Usa variables {{name}} y {{business}}.\n${onixRules}\nDevuelve SOLO código HTML.\nORDEN: ${promptDetails}`;
       const response = await ai.models.generateContent({
         model: 'gemini-1.5-flash',
         contents: systemPrompt
       });
-      
       let html = response.text || '';
       if (html.startsWith('```html')) {
         html = html.replace(/^```html\n/, '').replace(/\n```$/, '');
@@ -308,7 +286,8 @@ ORDEN: ${promptDetails}`;
         for (const lead of leads) {
           let personalizedHtml = html
             .replace(/\{\{name\}\}/g, lead.name || "amigo")
-            .replace(/\{\{business\}\}/g, lead.name || "tu negocio");
+            .replace(/\{\{business\}\}/g, lead.name || "tu negocio")
+            .replace(/\{\{notes\}\}/g, lead.notes || "");
 
           try {
             await transporter.sendMail({
@@ -317,6 +296,19 @@ ORDEN: ${promptDetails}`;
               subject: subject.replace(/\{\{business\}\}/g, lead.name || "tu negocio"),
               html: personalizedHtml,
             });
+            
+            // Actualizar estado a 'contactado' en Firestore
+            if (admin.apps.length && lead.id) {
+              try {
+                await admin.firestore().collection('leads').doc(lead.id).update({
+                  status: 'contacted',
+                  updatedAt: admin.firestore.FieldValue.serverTimestamp()
+                });
+              } catch (fsError) {
+                console.error(`[Firestore] Error actualizando lead ${lead.id}:`, fsError);
+              }
+            }
+
             console.log(`[SMTP] Enviado con éxito a: ${lead.email}`);
             results.push({ email: lead.email, status: "sent" });
           } catch (err) {
@@ -324,8 +316,9 @@ ORDEN: ${promptDetails}`;
             results.push({ email: lead.email, status: "failed", error: (err as Error).message });
           }
           
-          // ANTIBLOQUEO: Esperar 3 segundos entre cada envío para evitar rate-limits
-          await new Promise(resolve => setTimeout(resolve, 3000));
+          // ANTIBLOQUEO: Esperar entre 3 y 6 segundos aleatorios entre cada envío para evitar rate-limits y detección de bots
+          const randomEmailWait = 3000 + Math.floor(Math.random() * 3000);
+          await new Promise(resolve => setTimeout(resolve, randomEmailWait));
         }
         return res.json({ success: true, results });
       } else {
@@ -353,26 +346,15 @@ ORDEN: ${promptDetails}`;
     });
     app.use(vite.middlewares);
   } else {
-    // Servir archivos estáticos en producción
-    const distPath = path.resolve(process.cwd(), "dist");
-    console.log(`[Server] Sirviendo archivos estáticos desde: ${distPath}`);
-    
+    const distPath = path.join(process.cwd(), "dist");
     app.use(express.static(distPath));
-    
     app.get("*", (req, res) => {
-      const indexPath = path.join(distPath, "index.html");
-      console.log(`[Server] Petición recibida, sirviendo: ${indexPath}`);
-      res.sendFile(indexPath, (err) => {
-        if (err) {
-          console.error("[Server] Error al enviar index.html:", err);
-          res.status(500).send("Error cargando la aplicación. Por favor, revisa los logs del servidor.");
-        }
-      });
+      res.sendFile(path.join(distPath, "index.html"));
     });
   }
 
-  app.listen(Number(PORT), "0.0.0.0", () => {
-    console.log(`Servidor corriendo en el puerto ${PORT}`);
+  app.listen(PORT, "0.0.0.0", () => {
+    console.log(`Servidor de Campañas corriendo en http://localhost:${PORT}`);
   });
 }
 

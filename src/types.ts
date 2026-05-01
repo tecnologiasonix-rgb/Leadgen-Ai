@@ -14,7 +14,7 @@ export interface Lead {
   aiEvaluated?: boolean;
 }
 
-export type LeadStatus = 'new' | 'contacted' | 'interested' | 'not-interested' | 'client';
+export type LeadStatus = 'new' | 'investigated' | 'contacted' | 'interested' | 'not-interested' | 'client';
 
 export type View = 'finder' | 'manager' | 'campaigns' | 'calls' | 'dashboard' | 'billing';
 export type ManagerFilter = 'all' | 'with-email' | 'no-website' | 'no-nothing';

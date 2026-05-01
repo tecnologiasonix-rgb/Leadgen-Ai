@@ -72,10 +72,11 @@ export const CallCampaigns: React.FC = () => {
   const getStatusColor = (status?: string) => {
     switch (status) {
       case 'new': return 'bg-blue-100 text-blue-700';
+      case 'investigated': return 'bg-purple-100 text-purple-700';
       case 'contacted': return 'bg-yellow-100 text-yellow-700';
       case 'interested': return 'bg-emerald-100 text-emerald-700';
       case 'not-interested': return 'bg-red-100 text-red-700';
-      case 'client': return 'bg-purple-100 text-purple-700';
+      case 'client': return 'bg-indigo-100 text-indigo-700';
       default: return 'bg-slate-100 text-slate-700';
     }
   };
@@ -83,6 +84,7 @@ export const CallCampaigns: React.FC = () => {
   const getStatusLabel = (status?: string) => {
     switch (status) {
       case 'new': return 'Nuevo';
+      case 'investigated': return 'Investigado';
       case 'contacted': return 'Contactado';
       case 'interested': return 'Interesado';
       case 'not-interested': return 'Rechazado';
@@ -177,6 +179,7 @@ export const CallCampaigns: React.FC = () => {
                             className={`text-xs font-semibold px-2 py-1 rounded-full outline-none cursor-pointer border-none appearance-none ${getStatusColor(lead.status || 'new')}`}
                           >
                             <option value="new">Nuevo</option>
+                            <option value="investigated">Investigado (IA)</option>
                             <option value="contacted">Contactado</option>
                             <option value="interested">Interesado</option>
                             <option value="not-interested">Rechazado</option>
@@ -187,6 +190,7 @@ export const CallCampaigns: React.FC = () => {
                               href={`https://wa.me/${lead.phone.replace(/\D/g, '').length === 9 ? '34' + lead.phone.replace(/\D/g, '') : lead.phone.replace(/\D/g, '')}`} 
                               target="_blank" 
                               rel="noreferrer"
+                              onClick={() => updateStatus(lead.id!, 'contacted')}
                               className="p-3 bg-green-500 hover:bg-green-600 text-white rounded-full transition-colors active:scale-95 flex items-center justify-center"
                               title="Enviar WhatsApp"
                             >
@@ -197,6 +201,7 @@ export const CallCampaigns: React.FC = () => {
                           )}
                           <a 
                             href={`tel:${lead.phone}`}
+                            onClick={() => updateStatus(lead.id!, 'contacted')}
                             className="p-3 bg-blue-500 hover:bg-blue-600 text-white rounded-full transition-colors active:scale-95 flex items-center justify-center"
                             title="Llamar"
                           >

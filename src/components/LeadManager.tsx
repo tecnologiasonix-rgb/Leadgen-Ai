@@ -159,10 +159,11 @@ export const LeadManager: React.FC<LeadManagerProps> = ({ leadService, user }) =
   const getStatusColor = (status?: string) => {
     switch (status) {
       case 'new': return 'bg-blue-100 text-blue-700';
+      case 'investigated': return 'bg-purple-100 text-purple-700';
       case 'contacted': return 'bg-yellow-100 text-yellow-700';
       case 'interested': return 'bg-emerald-100 text-emerald-700';
       case 'not-interested': return 'bg-red-100 text-red-700';
-      case 'client': return 'bg-purple-100 text-purple-700';
+      case 'client': return 'bg-indigo-100 text-indigo-700';
       default: return 'bg-slate-100 text-slate-700';
     }
   };
@@ -170,6 +171,7 @@ export const LeadManager: React.FC<LeadManagerProps> = ({ leadService, user }) =
   const getStatusLabel = (status?: string) => {
     switch (status) {
       case 'new': return 'Nuevo';
+      case 'investigated': return 'Investigado';
       case 'contacted': return 'Contactado';
       case 'interested': return 'Interesado';
       case 'not-interested': return 'Rechazado';
@@ -204,29 +206,40 @@ export const LeadManager: React.FC<LeadManagerProps> = ({ leadService, user }) =
           <h2 className="text-2xl font-black text-slate-900">Lead Manager</h2>
           <p className="text-slate-500 text-sm">Gestiona tu base de datos y segmenta para tus campañas.</p>
         </div>
-        <div className="flex flex-wrap gap-3 items-center">
-          <select
-            value={selectedProfileId}
-            onChange={(e) => setSelectedProfileId(e.target.value)}
-            className="bg-white border border-slate-200 text-slate-700 text-sm font-medium px-4 py-3 rounded-2xl outline-none focus:border-indigo-500 focus:ring-2 focus:ring-indigo-100 transition-all cursor-pointer shadow-sm"
-          >
-            {AI_EVAL_PROFILES.map((p) => (
-              <option key={p.id} value={p.id}>{p.name}</option>
-            ))}
-          </select>
-          <button 
-            disabled={leads.length === 0 || isLoading}
-            onClick={handleDeleteAll}
-            className="flex items-center gap-2 bg-white border border-red-200 text-red-500 hover:bg-red-50 px-6 py-3 rounded-2xl text-sm font-bold transition-all active:scale-[0.98] disabled:opacity-50"
-          >
-            <Trash2 className="w-4 h-4" /> Eliminar Todo
-          </button>
-          <button 
-            onClick={downloadCSV}
-            className="flex items-center gap-2 bg-indigo-600 hover:bg-indigo-700 text-white px-6 py-3 rounded-2xl text-sm font-bold shadow-lg shadow-indigo-100 transition-all active:scale-[0.98]"
-          >
-            <Download className="w-4 h-4" /> Exportar ({filteredLeads.length})
-          </button>
+        <div className="flex flex-col md:flex-row gap-4 items-start md:items-center bg-slate-50 p-4 rounded-3xl border border-slate-200">
+          <div className="space-y-1 flex-1">
+            <label className="text-[10px] font-black text-slate-400 uppercase tracking-widest ml-1">Enfoque de la Investigación IA</label>
+            <div className="flex flex-col sm:flex-row items-start sm:items-center gap-3">
+              <select
+                value={selectedProfileId}
+                onChange={(e) => setSelectedProfileId(e.target.value)}
+                className="bg-white border border-slate-200 text-slate-700 text-sm font-bold px-4 py-2.5 rounded-xl outline-none focus:border-indigo-500 focus:ring-2 focus:ring-indigo-100 transition-all cursor-pointer shadow-sm min-w-[200px]"
+              >
+                {AI_EVAL_PROFILES.map((p) => (
+                  <option key={p.id} value={p.id}>{p.name}</option>
+                ))}
+              </select>
+              <div className="text-xs text-slate-500 italic flex items-center gap-2">
+                <Sparkles className="w-3 h-3 text-purple-500" />
+                La IA buscará: {selectedProfile?.targetDescription} analizando {selectedProfile?.instructions.split('\n').map(i => i.replace(/^\d+\.\s*/, '')).join(', ').toLowerCase()}
+              </div>
+            </div>
+          </div>
+          <div className="flex gap-2 w-full md:w-auto">
+            <button 
+              disabled={leads.length === 0 || isLoading}
+              onClick={handleDeleteAll}
+              className="flex-1 md:flex-none flex items-center justify-center gap-2 bg-white border border-red-200 text-red-500 hover:bg-red-50 px-4 py-2.5 rounded-xl text-xs font-bold transition-all active:scale-[0.98] disabled:opacity-50"
+            >
+              <Trash2 className="w-4 h-4" /> Borrar Base
+            </button>
+            <button 
+              onClick={downloadCSV}
+              className="flex-1 md:flex-none flex items-center justify-center gap-2 bg-indigo-600 hover:bg-indigo-700 text-white px-4 py-2.5 rounded-xl text-xs font-bold shadow-lg shadow-indigo-100 transition-all active:scale-[0.98]"
+            >
+              <Download className="w-4 h-4" /> Exportar ({filteredLeads.length})
+            </button>
+          </div>
         </div>
       </div>
 
@@ -312,6 +325,7 @@ export const LeadManager: React.FC<LeadManagerProps> = ({ leadService, user }) =
                         className={`text-[10px] md:text-xs font-bold px-2 py-1.5 md:px-3 md:py-2 rounded-lg outline-none cursor-pointer border-none appearance-none ${getStatusColor(lead.status || 'new')}`}
                       >
                         <option value="new">Nuevo Prospecto</option>
+                        <option value="investigated">Investigado (IA)</option>
                         <option value="contacted">Contactado</option>
                         <option value="interested">Interesado / Potencial</option>
                         <option value="not-interested">Rechazado</option>

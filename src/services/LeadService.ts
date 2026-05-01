@@ -38,8 +38,6 @@ function handleFirestoreError(error: unknown, operationType: OperationType, path
 }
 
 export class LeadService {
-  constructor() {}
-
   async saveToFirestore(lead: Lead, userId: string): Promise<string> {
     const path = "leads";
     try {
@@ -116,8 +114,6 @@ export class LeadService {
 
   async searchLeads(zipCodes: string[], businessType: string): Promise<Lead[]> {
     const allLeads: Lead[] = [];
-
-    // Procesamos cada código postal para asegurar máxima calidad por zona
     for (const zip of zipCodes) {
       const prompt = `Actúa como un experto en Inteligencia de Ventas y OSINT. Tu misión es extraer una lista EXHAUSTIVA (al menos 40 si existen) de leads del tipo "${businessType}" en el código postal ${zip.trim()} de España.
       
@@ -128,30 +124,20 @@ export class LeadService {
       4. CUMPLIMIENTO: Asegúrate de que todos los establecimientos pertenezcan al CP ${zip.trim()}.
       
       Responde ÚNICAMENTE con el JSON array solicitado.`;
-
       try {
         const response = await fetch('/api/generate-leads', {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({ prompt })
         });
-        
         if (!response.ok) throw new Error("Error al consultar Gemini");
-
         const leads = await response.json();
-        if (leads && Array.isArray(leads)) {
-          allLeads.push(...leads);
-        }
+        if (leads && Array.isArray(leads)) allLeads.push(...leads);
       } catch (error) {
         console.error(`Error en zona ${zip}:`, error);
       }
-      
-      // ANTIBLOQUEO: Esperar 8 segundos entre cada código postal para no saturar la API
       await new Promise(resolve => setTimeout(resolve, 8000));
     }
-    
-    // Eliminar duplicados por nombre y dirección
-    const uniqueLeads = Array.from(new Map(allLeads.map(item => [`${item.name}-${item.address}`, item])).values());
-    return uniqueLeads;
+    return Array.from(new Map(allLeads.map(item => [`${item.name}-${item.address}`, item])).values());
   }
 }

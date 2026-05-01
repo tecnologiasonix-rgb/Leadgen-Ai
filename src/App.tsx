@@ -44,13 +44,9 @@ export default function App() {
     try {
       const provider = new GoogleAuthProvider();
       await signInWithPopup(auth, provider);
-    } catch (err: any) {
-      console.error('Firebase Auth Error:', err);
-      if (err.code === 'auth/unauthorized-domain') {
-        alert('Este dominio no está autorizado en la Consola de Firebase (Authentication > Settings > Authorized Domains).');
-      } else {
-        alert(`Error al iniciar sesión: ${err.message}`);
-      }
+    } catch (err) {
+      console.error(err);
+      alert('Error al iniciar sesión con Google.');
     }
   };
 

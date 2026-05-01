@@ -48,16 +48,12 @@ export class AIEvaluator {
       console.warn("Lead already evaluated by AI");
       return;
     }
-
     try {
-      // Set to loading or specific status
       if (lead.id) {
         await updateDoc(doc(db, 'leads', lead.id), { notes: 'Evaluando con IA...' });
       }
-
       const evalTarget = profile?.targetDescription || 'restaurante o local de hostelería';
-      const evalInstructions = profile?.instructions || '1. ¿Tiene terraza?\n2. ¿Qué tamaño o capacidad aproximada tiene (pequeño/mediano/grande)?\n3. ¿Cómo es el sentimiento general de las reseñas (buenas, tiene quejas por servicio)?\n4. ¿Algún punto fuerte o débil a la hora de venderles tecnología/sofware?';
-
+      const evalInstructions = profile?.instructions || '1. ¿Tiene terraza?\n2. ¿Qué tamaño o capacidad aproximada tiene?\n3. ¿Cómo es el sentimiento general de las reseñas?\n4. ¿Algún punto fuerte o débil a la hora de venderles tecnología?';
       const prompt = `
 Analiza este negocio (${evalTarget}) de España.
 Nombre: ${lead.name}
@@ -70,25 +66,20 @@ ${evalInstructions}
 
 Dame SOLO el texto de la nota resultante sin saludos ni introducciones, formato texto plano.
 `;
-
       const response = await fetch('/api/evaluate-lead', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ prompt })
       });
-
       if (!response.ok) throw new Error("Error al consultar Gemini en el servidor");
-      
       const { textResult } = await response.json();
-
       if (lead.id) {
-        await updateDoc(doc(db, 'leads', lead.id), { 
+        await updateDoc(doc(db, 'leads', lead.id), {
           notes: textResult,
-          status: 'contacted', // Changing status optionally to show action was taken
+          status: 'contacted',
           aiEvaluated: true
         });
       }
-
     } catch (error) {
       console.error('Error in AI Evaluation:', error);
       if (lead.id) {
@@ -98,16 +89,13 @@ Dame SOLO el texto de la nota resultante sin saludos ni introducciones, formato 
   }
 
   static async generateEmailTemplate(promptDetails: string, currentHtml?: string): Promise<string> {
-    
     try {
       const response = await fetch('/api/generate-email', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ promptDetails, currentHtml })
       });
-
       if (!response.ok) throw new Error("Error al consultar Gemini en el servidor");
-      
       const { html } = await response.json();
       return html;
     } catch (error) {
