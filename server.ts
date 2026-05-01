@@ -147,6 +147,32 @@ async function startServer() {
     }
   });
 
+  async function generateWithRetry(ai: GoogleGenAI, params: any, maxRetries = 3) {
+    let attempt = 0;
+    while (attempt < maxRetries) {
+      try {
+        return await ai.models.generateContent(params);
+      } catch (err: any) {
+        if (
+          err?.status === 503 ||
+          err?.status === "UNAVAILABLE" ||
+          err?.message?.includes("503") ||
+          err?.message?.includes("High demand") ||
+          err?.message?.includes("UNAVAILABLE")
+        ) {
+          attempt++;
+          if (attempt >= maxRetries) throw err;
+          const delayMs = Math.pow(2, attempt) * 1000 + Math.random() * 1000;
+          console.warn(`[Gemini] 503 Error, retrying in ${Math.round(delayMs)}ms... (Attempt ${attempt}/${maxRetries})`);
+          await new Promise(res => setTimeout(res, delayMs));
+        } else {
+          throw err;
+        }
+      }
+    }
+    throw new Error("Max retries reached");
+  }
+
   app.post("/api/generate-leads", async (req, res) => {
     const apiKey = process.env.GEMINI_API_KEY;
     if (!apiKey) {
@@ -155,8 +181,8 @@ async function startServer() {
     try {
       const { prompt } = req.body;
       const ai = new GoogleGenAI({ apiKey });
-      const response = await ai.models.generateContent({
-        model: "gemini-3.1-flash-lite-preview",
+      const response = await generateWithRetry(ai, {
+        model: "gemini-3-flash-preview",
         contents: prompt,
         config: { 
           responseMimeType: "application/json",
@@ -202,8 +228,8 @@ async function startServer() {
     try {
       const { prompt } = req.body;
       const ai = new GoogleGenAI({ apiKey });
-      const response = await ai.models.generateContent({
-        model: "gemini-3.1-flash-lite-preview",
+      const response = await generateWithRetry(ai, {
+        model: "gemini-3-flash-preview",
         contents: prompt,
       });
       const textResult = response.text?.trim() || 'No se pudo obtener información.';
@@ -226,8 +252,8 @@ async function startServer() {
       const systemPrompt = currentHtml
         ? `Eres un experto en marketing y diseño de correos electrónicos. Tu tarea es modificar la siguiente plantilla HTML basándote en la orden del usuario.\nPLANTILLA ACTUAL:\n\`\`\`html\n${currentHtml}\n\`\`\`\n\nDevuelve EXCLUSIVAMENTE el nuevo HTML completo, sin markdown. Mantén estilos inline y responsivo. Usa variables {{name}} y {{business}}.\n${onixRules}\nORDEN: ${promptDetails}`
         : `Eres un experto en marketing y diseño de correos electrónicos. Crea una plantilla HTML para email en frío para vender tecnología a negocios de hostelería. Estructura tabular, compatible con email, moderna, responsiva. Usa variables {{name}} y {{business}}.\n${onixRules}\nDevuelve SOLO código HTML.\nORDEN: ${promptDetails}`;
-      const response = await ai.models.generateContent({
-        model: 'gemini-3.1-flash-lite-preview',
+      const response = await generateWithRetry(ai, {
+        model: 'gemini-3-flash-preview',
         contents: systemPrompt
       });
       let html = response.text || '';
