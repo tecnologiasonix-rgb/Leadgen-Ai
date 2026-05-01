@@ -5,7 +5,7 @@ import nodemailer from "nodemailer";
 import dotenv from "dotenv";
 import Stripe from "stripe";
 import admin from "firebase-admin";
-import { GoogleGenAI } from "@google/genai";
+import { GoogleGenAI, Type } from "@google/genai";
 
 dotenv.config();
 
@@ -33,7 +33,7 @@ const stripe = process.env.STRIPE_SECRET_KEY
 
 async function startServer() {
   const app = express();
-  const PORT = 8080;
+  const PORT = process.env.PORT ? parseInt(process.env.PORT as string, 10) : 3000;
 
   // API routes FIRST
   app.get("/api/health", (req, res) => {
@@ -156,12 +156,37 @@ async function startServer() {
       const { prompt } = req.body;
       const ai = new GoogleGenAI({ apiKey });
       const response = await ai.models.generateContent({
-        model: "gemini-2.0-flash",
+        model: "gemini-1.5-flash",
         contents: prompt,
-        config: { responseMimeType: "application/json" }
+        config: { 
+          responseMimeType: "application/json",
+          responseSchema: {
+            type: Type.ARRAY,
+            items: {
+              type: Type.OBJECT,
+              properties: {
+                name: { type: Type.STRING },
+                address: { type: Type.STRING },
+                phone: { type: Type.STRING },
+                email: { type: Type.STRING },
+                website: { type: Type.STRING },
+                type: { type: Type.STRING }
+              },
+              required: ["name", "address"]
+            }
+          }
+        }
       });
-      const text = response.text;
+      let text = response.text;
       if (!text) throw new Error("No se obtuvo respuesta de Gemini");
+      
+      // Limpiar markdown si Gemini lo envuelve
+      if (text.startsWith('```json')) {
+        text = text.replace(/^```json\n/, '').replace(/\n```$/, '');
+      } else if (text.startsWith('```')) {
+        text = text.replace(/^```\n/, '').replace(/\n```$/, '');
+      }
+      
       res.json(JSON.parse(text));
     } catch (error) {
       console.error("[Gemini API] Error:", error);
@@ -178,7 +203,7 @@ async function startServer() {
       const { prompt } = req.body;
       const ai = new GoogleGenAI({ apiKey });
       const response = await ai.models.generateContent({
-        model: "gemini-2.0-flash",
+        model: "gemini-1.5-flash",
         contents: prompt,
       });
       const textResult = response.text?.trim() || 'No se pudo obtener información.';
@@ -202,7 +227,7 @@ async function startServer() {
         ? `Eres un experto en marketing y diseño de correos electrónicos. Tu tarea es modificar la siguiente plantilla HTML basándote en la orden del usuario.\nPLANTILLA ACTUAL:\n\`\`\`html\n${currentHtml}\n\`\`\`\n\nDevuelve EXCLUSIVAMENTE el nuevo HTML completo, sin markdown. Mantén estilos inline y responsivo. Usa variables {{name}} y {{business}}.\n${onixRules}\nORDEN: ${promptDetails}`
         : `Eres un experto en marketing y diseño de correos electrónicos. Crea una plantilla HTML para email en frío para vender tecnología a negocios de hostelería. Estructura tabular, compatible con email, moderna, responsiva. Usa variables {{name}} y {{business}}.\n${onixRules}\nDevuelve SOLO código HTML.\nORDEN: ${promptDetails}`;
       const response = await ai.models.generateContent({
-        model: 'gemini-2.0-flash',
+        model: 'gemini-1.5-flash',
         contents: systemPrompt
       });
       let html = response.text || '';

@@ -130,7 +130,12 @@ export class LeadService {
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({ prompt })
         });
-        if (!response.ok) throw new Error("Error al consultar Gemini");
+        
+        if (!response.ok) {
+          const errData = await response.json().catch(() => ({}));
+          throw new Error(`Error ${response.status}: ${errData.error || 'Error al consultar Gemini'}`);
+        }
+        
         const leads = await response.json();
         if (leads && Array.isArray(leads)) allLeads.push(...leads);
       } catch (error) {
