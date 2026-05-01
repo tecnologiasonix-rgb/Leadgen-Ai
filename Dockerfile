@@ -1,4 +1,4 @@
-FROM node:22-alpine
+FROM node:22-slim
 WORKDIR /app
 COPY package*.json ./
 RUN npm install
@@ -7,4 +7,4 @@ RUN npm run build
 EXPOSE 8080
 ENV NODE_ENV=production
 ENV PORT=8080
-CMD ["node_modules/.bin/tsx", "server.ts"]
+CMD ["npx", "tsx", "server.ts"]
