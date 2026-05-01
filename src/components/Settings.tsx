@@ -3,6 +3,7 @@ import { Save, Server, Loader2, Check } from 'lucide-react';
 import { doc, getDoc, setDoc } from 'firebase/firestore';
 import { db } from '../lib/firebase';
 import { motion } from 'motion/react';
+import { toast } from 'sonner';
 
 interface SettingsProps {
   user: any;
@@ -52,10 +53,11 @@ export const Settings: React.FC<SettingsProps> = ({ user }) => {
         }
       }, { merge: true });
       setIsSaved(true);
+      toast.success('Configuración guardada correctamente.');
       setTimeout(() => setIsSaved(false), 3000);
     } catch (error) {
       console.error("Error saving settings:", error);
-      alert('Error al guardar la configuración');
+      toast.error('Error al guardar la configuración');
     } finally {
       setIsLoading(false);
     }

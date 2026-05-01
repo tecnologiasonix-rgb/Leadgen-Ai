@@ -1,7 +1,8 @@
 import React, { useState, useEffect, useMemo } from 'react';
 import { Mail, Globe, Trash2, Download, Copy, Database, Loader2, Filter, AlertCircle, Edit3, MessageSquare, Check, X, PhoneCall, Sparkles, Settings } from 'lucide-react';
 import { motion, AnimatePresence } from 'motion/react';
-import { collection, query, where, onSnapshot, updateDoc, doc, deleteDoc, getDocs, writeBatch } from 'firebase/firestore';
+import { toast } from 'sonner';
+import { collection, query, where, onSnapshot, updateDoc, doc, deleteDoc, getDocs, writeBatch, getDoc, setDoc, increment } from 'firebase/firestore';
 import { db } from '../lib/firebase';
 import { LeadService } from '../services/LeadService';
 import { AIEvaluator, AI_EVAL_PROFILES, AIEvalProfile } from '../services/AIEvaluator';
@@ -78,10 +79,22 @@ export const LeadManager: React.FC<LeadManagerProps> = ({ leadService, user }) =
     noNothing: leads.filter(l => !l.email?.trim() && !l.website?.trim()).length,
   }), [leads]);
 
-  const downloadCSV = () => {
+  const downloadCSV = async () => {
     if (filteredLeads.length === 0) return;
+    
+    const { UserService } = await import('../services/UserService');
+    const subscription = await UserService.getUserSubscription(user.uid);
+    
+    let exportData = filteredLeads;
+    if (subscription.plan === 'free') {
+      if (exportData.length > 3) {
+        exportData = exportData.slice(0, 3);
+        toast.error('Plan Gratuito: Solo se han exportado 3 leads. Mejora a Pro para exportar todos.');
+      }
+    }
+
     const headers = ['Nombre', 'Dirección', 'Teléfono', 'Email', 'Web', 'Tipo', 'CP', 'Estado', 'Notas'];
-    const rows = filteredLeads.map(l => [
+    const rows = exportData.map(l => [
       l.name, l.address, l.phone || '', l.email || '', l.website || '', l.type || '', l.zipCode || '', l.status || 'Nuevo', l.notes || ''
     ]);
     const csvContent = [headers, ...rows].map(e => e.join(",")).join("\n");
@@ -182,11 +195,30 @@ export const LeadManager: React.FC<LeadManagerProps> = ({ leadService, user }) =
 
   const handleAIEvaluate = async (lead: Lead) => {
     if (!lead.id) return;
-    setEvaluatingLeadId(lead.id);
+    
     try {
+      const { UserService } = await import('../services/UserService');
+      const subscription = await UserService.getUserSubscription(user.uid);
+      const userDocRef = doc(db, 'userStats', user.uid);
+      const docSnap = await getDoc(userDocRef);
+      let aiEvalUses = 0;
+      if (docSnap.exists()) {
+        aiEvalUses = docSnap.data()?.aiEvalUses || 0;
+      }
+
+      if (subscription.plan === 'free' && aiEvalUses >= 3) {
+        toast.error('Límite del plan Gratuito alcanzado (3 evaluaciones de IA). Mejora tu plan a Pro.');
+        return;
+      }
+
+      setEvaluatingLeadId(lead.id);
+
       await AIEvaluator.evaluateLead(lead, selectedProfile);
+      
+      await setDoc(userDocRef, { aiEvalUses: increment(1) }, { merge: true });
     } catch (e) {
       console.error(e);
+      toast.error('Error al evaluar lead con IA');
     } finally {
       setEvaluatingLeadId(null);
     }

@@ -1,6 +1,7 @@
 import React from 'react';
 import { Check, Star, Zap, Building2, ExternalLink } from 'lucide-react';
 import { User as FirebaseUser } from 'firebase/auth';
+import { toast } from 'sonner';
 
 interface PricingProps {
   user: FirebaseUser | null;
@@ -9,7 +10,7 @@ interface PricingProps {
 export const Pricing: React.FC<PricingProps> = ({ user }) => {
   const handleSubscribe = (url: string) => {
     if (!url) {
-      alert('Configura los links de Stripe en las variables de entorno primero.');
+      toast.error('Configura los links de Stripe en las variables de entorno primero.');
       return;
     }
     // Si tenemos usuario, podemos pasar su email o ID en la URL del link de pago

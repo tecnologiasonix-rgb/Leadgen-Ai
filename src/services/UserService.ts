@@ -10,8 +10,8 @@ export interface UserSubscription {
 }
 
 const DEFAULT_PLAN: UserSubscription = {
-  plan: 'enterprise',
-  leadsLimit: 999999,
+  plan: 'free',
+  leadsLimit: 3,
   leadsUsed: 0
 };
 
@@ -26,8 +26,8 @@ export const UserService = {
     
     const data = userSnap.data();
     return {
-      plan: data.plan || 'enterprise',
-      leadsLimit: data.leadsLimit ?? 999999,
+      plan: data.plan || 'free',
+      leadsLimit: data.leadsLimit ?? 3,
       leadsUsed: data.leadsUsed || 0,
       stripeCustomerId: data.stripeCustomerId,
       subscriptionStatus: data.subscriptionStatus
@@ -40,8 +40,8 @@ export const UserService = {
     
     if (!userSnap.exists()) {
       await setDoc(userRef, {
-        plan: 'enterprise',
-        leadsLimit: 999999,
+        plan: 'free',
+        leadsLimit: 3,
         leadsUsed: count,
         createdAt: new Date().toISOString()
       });

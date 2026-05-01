@@ -4,6 +4,7 @@ import { db, auth } from '../lib/firebase';
 import { emailService, EMAIL_TEMPLATES } from '../services/EmailService';
 import { Mail, Send, Filter, CheckCircle2, AlertCircle, Eye, Users, Plus, Trash2, Bot, Loader2, Edit3 } from 'lucide-react';
 import { motion, AnimatePresence } from 'motion/react';
+import { toast } from 'sonner';
 import { AIEvaluator } from '../services/AIEvaluator';
 
 interface Lead {
@@ -125,7 +126,7 @@ export const EmailCampaigns: React.FC = () => {
       setTemplateToDelete(null);
     } catch (err) {
       console.error(err);
-      alert('Error al eliminar plantilla');
+      toast.error('Error al eliminar plantilla');
     }
   };
 
@@ -175,7 +176,13 @@ export const EmailCampaigns: React.FC = () => {
         dailyUses = 0;
       }
 
-      // No daily limit anymore
+      const { UserService } = await import('../services/UserService');
+      const subscription = await UserService.getUserSubscription(user.uid);
+      
+      if (subscription.plan === 'free' && dailyUses >= 3) {
+        toast.error('Límite del plan Gratuito alcanzado (3 plantillas de IA al día). Mejora a Pro.');
+        return;
+      }
       
       const generatedHtml = await AIEvaluator.generateEmailTemplate(
         promptDetails, 
@@ -208,7 +215,7 @@ export const EmailCampaigns: React.FC = () => {
       }
     } catch (err) {
       console.error(err);
-      alert('Hubo un error al generar la plantilla con IA.');
+      toast.error('Hubo un error al generar la plantilla con IA.');
     } finally {
       setIsGenerating(false);
     }
@@ -222,6 +229,21 @@ export const EmailCampaigns: React.FC = () => {
     const leadsToSend = leads.filter(l => selectedLeads.includes(l.id));
 
     try {
+      const { UserService } = await import('../services/UserService');
+      const subscription = await UserService.getUserSubscription(user!.uid);
+      
+      let emailsSentSoFar = 0;
+      const statsRef = doc(db, 'userStats', user!.uid);
+      const statsDoc = await getDoc(statsRef);
+      if (statsDoc.exists()) {
+        emailsSentSoFar = statsDoc.data().emailsSent || 0;
+      }
+
+      if (subscription.plan === 'free' && (emailsSentSoFar + leadsToSend.length > 3)) {
+        toast.error('Plan Gratuito: Solo puedes enviar hasta 3 emails en total. Mejora a Pro.');
+        return;
+      }
+
       let smtpSettings;
       if (user?.uid) {
         const userDoc = await getDoc(doc(db, 'users', user.uid));
@@ -245,8 +267,6 @@ export const EmailCampaigns: React.FC = () => {
       }, ...prev]);
 
       if (user) {
-        const statsRef = doc(db, 'userStats', user.uid);
-        const statsDoc = await getDoc(statsRef);
         if (statsDoc.exists()) {
           await updateDoc(statsRef, { emailsSent: increment(selectedLeads.length) });
         } else {
@@ -258,6 +278,7 @@ export const EmailCampaigns: React.FC = () => {
     } catch (err) {
       console.error('Error al enviar campaña:', err);
       setError(err instanceof Error ? err.message : 'Error desconocido al enviar campaña');
+      toast.error(err instanceof Error ? err.message : 'Error desconocido al enviar campaña');
     } finally {
       setIsSending(false);
     }

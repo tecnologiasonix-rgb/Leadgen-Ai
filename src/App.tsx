@@ -6,6 +6,7 @@
 import React, { useState, useEffect } from 'react';
 import { Database, LogIn, Loader2 } from 'lucide-react';
 import { onAuthStateChanged, signInWithPopup, GoogleAuthProvider, User } from 'firebase/auth';
+import { Toaster, toast } from 'sonner';
 import { auth } from './lib/firebase';
 import { Sidebar } from './components/Sidebar';
 import { Dashboard } from './components/Dashboard';
@@ -46,7 +47,7 @@ export default function App() {
       await signInWithPopup(auth, provider);
     } catch (err) {
       console.error(err);
-      alert('Error al iniciar sesión con Google.');
+      toast.error('Error al iniciar sesión con Google.');
     }
   };
 
@@ -96,6 +97,7 @@ export default function App() {
 
   return (
     <div className="min-h-screen bg-slate-50 flex flex-col md:flex-row pb-16 md:pb-0">
+      <Toaster position="top-right" richColors />
       <Sidebar currentView={currentView} setCurrentView={setCurrentView} user={user} />
       
       {/* Background Agent */}

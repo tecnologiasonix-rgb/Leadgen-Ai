@@ -3,6 +3,7 @@ import { collection, query, where, onSnapshot, deleteDoc, doc, updateDoc } from 
 import { db, auth } from '../lib/firebase';
 import { Phone, PhoneCall, ListFilter, User, Search, Play, PhoneOff, Trash2, Edit3, MessageSquare, Check, X } from 'lucide-react';
 import { motion, AnimatePresence } from 'motion/react';
+import { toast } from 'sonner';
 import { Lead, LeadStatus } from '../types';
 
 export const CallCampaigns: React.FC = () => {
@@ -31,9 +32,10 @@ export const CallCampaigns: React.FC = () => {
     if (!window.confirm('¿Estás seguro de que quieres eliminar este prospecto?')) return;
     try {
       await deleteDoc(doc(db, "leads", leadId));
+      toast.success('Prospecto eliminado');
     } catch (error) {
       console.error("Error al eliminar el prospecto:", error);
-      alert('Hubo un error al eliminar el prospecto.');
+      toast.error('Hubo un error al eliminar el prospecto.');
     }
   };
 

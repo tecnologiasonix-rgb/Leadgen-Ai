@@ -1,6 +1,7 @@
 import React, { useState, useMemo } from 'react';
 import { Search, MapPin, Loader2, Download, Filter, Database, CheckSquare, Square, Copy, Save } from 'lucide-react';
 import { motion, AnimatePresence } from 'motion/react';
+import { toast } from 'sonner';
 import { LeadService } from '../services/LeadService';
 import { Lead } from '../types';
 
@@ -91,7 +92,13 @@ export const LeadFinder: React.FC<LeadFinderProps> = ({
     setIsSaving(true);
     try {
       const { UserService } = await import('../services/UserService');
-      // No limit checks anymore
+      const subscription = await UserService.getUserSubscription(user.uid);
+      
+      if (subscription.plan === 'free' && (subscription.leadsUsed + selectedLeads.length > subscription.leadsLimit)) {
+        toast.error(`Límite del plan Gratuito alcanzado (máx ${subscription.leadsLimit} leads). Mejora a Pro para guardar más.`);
+        setIsSaving(false);
+        return;
+      }
       
       for (const idx of selectedLeads) {
         await leadService.saveToFirestore(leads[idx], user.uid);
@@ -99,10 +106,10 @@ export const LeadFinder: React.FC<LeadFinderProps> = ({
       
       await UserService.incrementLeadsUsed(user.uid, selectedLeads.length);
       
-      alert('Leads guardados correctamente en el Lead Manager');
+      toast.success('Leads guardados correctamente en el Lead Manager');
       setSelectedLeads([]);
     } catch (err) {
-      alert('Error al guardar leads');
+      toast.error('Error al guardar leads');
     } finally {
       setIsSaving(false);
     }
