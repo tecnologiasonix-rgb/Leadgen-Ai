@@ -112,44 +112,62 @@ export const LeadManager: React.FC<LeadManagerProps> = ({ leadService, user }) =
       return;
     }
     
-    setIsLoading(true);
-    console.log(`[UI] Intentando borrar lead (ID: ${leadId})`);
-    try {
-      await deleteDoc(doc(db, "leads", leadId));
-      console.log(`[UI] Lead ${leadId} borrado con éxito de Firestore.`);
-    } catch (err) {
-      console.error('[UI] Error crítico al borrar:', err);
-    } finally {
-      setIsLoading(false);
-    }
+    toast('¿Seguro que quieres eliminar el lead?', {
+      action: {
+        label: 'Eliminar',
+        onClick: async () => {
+          setIsLoading(true);
+          console.log(`[UI] Intentando borrar lead (ID: ${leadId})`);
+          try {
+            await deleteDoc(doc(db, "leads", leadId));
+            console.log(`[UI] Lead ${leadId} borrado con éxito de Firestore.`);
+          } catch (err) {
+            console.error('[UI] Error crítico al borrar:', err);
+          } finally {
+            setIsLoading(false);
+          }
+        }
+      },
+      cancel: {
+        label: 'Cancelar',
+        onClick: () => {}
+      }
+    });
   };
 
   const handleDeleteAll = async () => {
     if (leads.length === 0) return;
     
-    setIsLoading(true);
-    console.log(`[UI] Intentando borrar TODOS los leads (Total: ${leads.length}) para ${user.uid}`);
-    try {
-      const q = query(collection(db, "leads"), where("userId", "==", user.uid));
-      const snapshot = await getDocs(q);
-      
-      if (snapshot.empty) {
-        console.log('No hay leads para borrar.');
-        return;
+    toast('¿Seguro que quieres borrar TODOS los leads?', {
+      action: {
+        label: 'Eliminar',
+        onClick: async () => {
+          setIsLoading(true);
+          console.log(`[UI] Intentando borrar TODOS los leads (Total: ${leads.length}) para ${user.uid}`);
+          try {
+            const q = query(collection(db, "leads"), where("userId", "==", user.uid));
+            const snapshot = await getDocs(q);
+            
+            if (!snapshot.empty) {
+              const batch = writeBatch(db);
+              snapshot.forEach((d) => {
+                batch.delete(doc(db, "leads", d.id));
+              });
+              await batch.commit();
+              console.log('[UI] Borrado total exitoso.');
+            }
+          } catch (err) {
+            console.error('[UI] Error crítico al borrar todo:', err);
+          } finally {
+            setIsLoading(false);
+          }
+        }
+      },
+      cancel: {
+        label: 'Cancelar',
+        onClick: () => {}
       }
-
-      const batch = writeBatch(db);
-      snapshot.forEach((d) => {
-        batch.delete(doc(db, "leads", d.id));
-      });
-      
-      await batch.commit();
-      console.log('[UI] Borrado total exitoso.');
-    } catch (err) {
-      console.error('[UI] Error crítico al borrar todo:', err);
-    } finally {
-      setIsLoading(false);
-    }
+    });
   };
 
   const updateStatus = async (leadId: string, status: LeadStatus) => {
@@ -206,8 +224,12 @@ export const LeadManager: React.FC<LeadManagerProps> = ({ leadService, user }) =
         aiEvalUses = docSnap.data()?.aiEvalUses || 0;
       }
 
-      if (subscription.plan === 'free' && aiEvalUses >= 3) {
-        toast.error('Límite del plan Gratuito alcanzado (3 evaluaciones de IA). Mejora tu plan a Pro.');
+      let maxEvals = 3;
+      if (subscription.plan === 'startup') maxEvals = 50;
+      else if (subscription.plan === 'pro' || subscription.plan === 'enterprise') maxEvals = Infinity;
+
+      if (aiEvalUses >= maxEvals) {
+        toast.error(`Límite de Agente IA alcanzado (${maxEvals} usos). Mejora tu plan para seguir evaluando.`);
         return;
       }
 

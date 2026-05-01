@@ -12,11 +12,20 @@ export const CallCampaigns: React.FC = () => {
   const [searchQuery, setSearchQuery] = useState('');
   const [editingNotes, setEditingNotes] = useState<string | null>(null);
   const [tempNotes, setTempNotes] = useState('');
+  const [hasAccess, setHasAccess] = useState<boolean | null>(null);
   
   const user = auth.currentUser;
 
   useEffect(() => {
     if (!user) return;
+    
+    // Check access plan
+    import('../services/UserService').then(({ UserService }) => {
+      UserService.getUserSubscription(user.uid).then(sub => {
+        setHasAccess(sub.plan === 'pro' || sub.plan === 'enterprise');
+      });
+    });
+
     const q = query(collection(db, 'leads'), where('userId', '==', user.uid));
     const unsubscribe = onSnapshot(q, (snapshot) => {
       const data = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() })) as Lead[];
@@ -29,14 +38,24 @@ export const CallCampaigns: React.FC = () => {
   const leadsWithPhone = leads.filter(l => !!l.phone?.trim() && l.phone !== 'No disponible');
 
   const handleDeleteLead = async (leadId: string) => {
-    if (!window.confirm('¿Estás seguro de que quieres eliminar este prospecto?')) return;
-    try {
-      await deleteDoc(doc(db, "leads", leadId));
-      toast.success('Prospecto eliminado');
-    } catch (error) {
-      console.error("Error al eliminar el prospecto:", error);
-      toast.error('Hubo un error al eliminar el prospecto.');
-    }
+    toast('¿Estás seguro de que quieres eliminar este prospecto?', {
+      action: {
+        label: 'Eliminar',
+        onClick: async () => {
+          try {
+            await deleteDoc(doc(db, "leads", leadId));
+            toast.success('Prospecto eliminado');
+          } catch (error) {
+            console.error("Error al eliminar el prospecto:", error);
+            toast.error('Hubo un error al eliminar el prospecto.');
+          }
+        }
+      },
+      cancel: {
+        label: 'Cancelar',
+        onClick: () => {}
+      }
+    });
   };
 
   const updateStatus = async (leadId: string, status: LeadStatus) => {
@@ -101,6 +120,16 @@ export const CallCampaigns: React.FC = () => {
     const localPart = cleanPhone.startsWith('34') ? cleanPhone.substring(2) : cleanPhone;
     return !localPart.startsWith('9') && !localPart.startsWith('8');
   };
+
+  if (hasAccess === false) {
+    return (
+      <div className="flex flex-col items-center justify-center p-12 bg-white rounded-3xl border border-rose-200 mt-20 max-w-lg mx-auto text-center shadow-lg">
+        <PhoneOff className="w-16 h-16 text-rose-500 mb-6" />
+        <h2 className="text-2xl font-black text-slate-900 mb-4">Campañas de Llamadas Limitadas</h2>
+        <p className="text-slate-600 mb-8 font-medium">Esta funcionalidad solo está disponible en los planes Pro y Enterprise. Mejora tu plan para acceder.</p>
+      </div>
+    );
+  }
 
   return (
     <div className="space-y-6">

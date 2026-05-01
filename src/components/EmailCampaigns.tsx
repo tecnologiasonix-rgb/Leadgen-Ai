@@ -179,8 +179,12 @@ export const EmailCampaigns: React.FC = () => {
       const { UserService } = await import('../services/UserService');
       const subscription = await UserService.getUserSubscription(user.uid);
       
-      if (subscription.plan === 'free' && dailyUses >= 3) {
-        toast.error('Límite del plan Gratuito alcanzado (3 plantillas de IA al día). Mejora a Pro.');
+      let maxTemplates = 3;
+      if (subscription.plan === 'startup') maxTemplates = 50;
+      else if (subscription.plan === 'pro' || subscription.plan === 'enterprise') maxTemplates = Infinity;
+
+      if (dailyUses >= maxTemplates) {
+        toast.error(`Límite alcanzado (${maxTemplates} usos). Mejora tu plan para generar más plantillas.`);
         return;
       }
       
@@ -239,8 +243,13 @@ export const EmailCampaigns: React.FC = () => {
         emailsSentSoFar = statsDoc.data().emailsSent || 0;
       }
 
-      if (subscription.plan === 'free' && (emailsSentSoFar + leadsToSend.length > 3)) {
-        toast.error('Plan Gratuito: Solo puedes enviar hasta 3 emails en total. Mejora a Pro.');
+      if (subscription.plan === 'free') {
+        if (emailsSentSoFar + leadsToSend.length > 3) {
+          toast.error('Plan Gratuito: Solo puedes enviar hasta 3 emails en total. Mejora a Pro.');
+          return;
+        }
+      } else if (subscription.plan === 'startup') {
+        toast.error('El plan Startup no incluye Campañas de E-mail. Mejora a Pro para acceder a esta función.');
         return;
       }
 

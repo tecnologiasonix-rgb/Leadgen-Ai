@@ -94,8 +94,9 @@ export const LeadFinder: React.FC<LeadFinderProps> = ({
       const { UserService } = await import('../services/UserService');
       const subscription = await UserService.getUserSubscription(user.uid);
       
-      if (subscription.plan === 'free' && (subscription.leadsUsed + selectedLeads.length > subscription.leadsLimit)) {
-        toast.error(`Límite del plan Gratuito alcanzado (máx ${subscription.leadsLimit} leads). Mejora a Pro para guardar más.`);
+      const newTotalLeads = subscription.leadsUsed + selectedLeads.length;
+      if (subscription.plan !== 'enterprise' && newTotalLeads > subscription.leadsLimit) {
+        toast.error(`Límite de tu plan alcanzado (máx ${subscription.leadsLimit} leads). Mejora tu plan para guardar más.`);
         setIsSaving(false);
         return;
       }
