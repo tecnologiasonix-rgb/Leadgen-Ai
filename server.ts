@@ -33,7 +33,7 @@ const stripe = process.env.STRIPE_SECRET_KEY
 
 async function startServer() {
   const app = express();
-  const PORT = 3000;
+  const PORT = 8080;
 
   // API routes FIRST
   app.get("/api/health", (req, res) => {
