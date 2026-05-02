@@ -5,7 +5,7 @@ import nodemailer from "nodemailer";
 import dotenv from "dotenv";
 import Stripe from "stripe";
 import admin from "firebase-admin";
-import { GoogleGenAI, Type } from "@google/genai";
+import OpenAI from "openai";
 
 dotenv.config();
 
@@ -40,7 +40,7 @@ async function startServer() {
     res.json({ 
       status: "ok",
       env: {
-        GEMINI_API_KEY_CONFIGURED: !!process.env.GEMINI_API_KEY,
+        DEEPSEEK_API_KEY_CONFIGURED: !!process.env.DEEPSEEK_API_KEY,
         STRIPE_SECRET_CONFIGURED: !!process.env.STRIPE_SECRET_KEY,
         FIREBASE_ADMIN_CONFIGURED: !!process.env.FIREBASE_SERVICE_ACCOUNT,
         SMTP_CONFIGURED: !!(process.env.EMAIL_USER && process.env.EMAIL_PASS)
@@ -147,23 +147,25 @@ async function startServer() {
     }
   });
 
-  async function generateWithRetry(ai: GoogleGenAI, params: any, maxRetries = 3) {
+  async function generateWithRetry(openai: OpenAI, params: any, maxRetries = 3) {
     let attempt = 0;
     while (attempt < maxRetries) {
       try {
-        return await ai.models.generateContent(params);
+        return await openai.chat.completions.create(params);
       } catch (err: any) {
         if (
           err?.status === 503 ||
           err?.status === "UNAVAILABLE" ||
           err?.message?.includes("503") ||
           err?.message?.includes("High demand") ||
-          err?.message?.includes("UNAVAILABLE")
+          err?.message?.includes("UNAVAILABLE") ||
+          err?.message?.includes("rate_limit") ||
+          err?.status === 429
         ) {
           attempt++;
           if (attempt >= maxRetries) throw err;
           const delayMs = Math.pow(2, attempt) * 1000 + Math.random() * 1000;
-          console.warn(`[Gemini] 503 Error, retrying in ${Math.round(delayMs)}ms... (Attempt ${attempt}/${maxRetries})`);
+          console.warn(`[DeepSeek] Error de disponibilidad, reintentando en ${Math.round(delayMs)}ms... (Intento ${attempt}/${maxRetries})`);
           await new Promise(res => setTimeout(res, delayMs));
         } else {
           throw err;
@@ -173,96 +175,129 @@ async function startServer() {
     throw new Error("Max retries reached");
   }
 
+  // Endpoint para generar leads
   app.post("/api/generate-leads", async (req, res) => {
-    const apiKey = process.env.GEMINI_API_KEY;
+    const apiKey = process.env.DEEPSEEK_API_KEY;
     if (!apiKey) {
-      return res.status(500).json({ error: "API Key de Gemini no configurada en el servidor." });
+      return res.status(500).json({ error: "API Key de DeepSeek no configurada en el servidor." });
     }
     try {
       const { prompt } = req.body;
-      const ai = new GoogleGenAI({ apiKey });
-      const response = await generateWithRetry(ai, {
-        model: "gemini-3-flash-preview",
-        contents: prompt,
-        config: { 
-          responseMimeType: "application/json",
-          responseSchema: {
-            type: Type.ARRAY,
-            items: {
-              type: Type.OBJECT,
-              properties: {
-                name: { type: Type.STRING },
-                address: { type: Type.STRING },
-                phone: { type: Type.STRING },
-                email: { type: Type.STRING },
-                website: { type: Type.STRING },
-                type: { type: Type.STRING }
-              },
-              required: ["name", "address"]
-            }
-          }
-        }
+      const openai = new OpenAI({ 
+        baseURL: "https://api.deepseek.com", 
+        apiKey 
       });
-      let text = response.text;
-      if (!text) throw new Error("No se obtuvo respuesta de Gemini");
+
+      const fullPrompt = `${prompt}
+
+IMPORTANTE: Responde ÚNICAMENTE con un array JSON válido usando este formato exacto:
+[
+  {
+    "name": "Nombre del negocio",
+    "address": "Dirección completa",
+    "phone": "Teléfono o cadena vacía",
+    "email": "Email o cadena vacía",
+    "website": "Web o cadena vacía",
+    "type": "Tipo de negocio"
+  }
+]
+No incluyas markdown, ni explicaciones, ni texto adicional. SOLO el array JSON.`;
+
+      const response = await generateWithRetry(openai, {
+        model: "deepseek-chat",
+        messages: [
+          { role: "user", content: fullPrompt }
+        ],
+        response_format: { type: "json_object" },
+        temperature: 0.7
+      });
+
+      let text = response.choices[0].message.content;
+      if (!text) throw new Error("No se obtuvo respuesta de DeepSeek");
       
-      // Limpiar markdown si Gemini lo envuelve
+      // Limpiar markdown si DeepSeek lo envuelve
       if (text.startsWith('```json')) {
         text = text.replace(/^```json\n/, '').replace(/\n```$/, '');
       } else if (text.startsWith('```')) {
         text = text.replace(/^```\n/, '').replace(/\n```$/, '');
       }
+
+      // DeepSeek con json_object puede devolver el array dentro de una propiedad
+      const parsed = JSON.parse(text);
+      const leads = Array.isArray(parsed) ? parsed : (parsed.leads || parsed.data || []);
       
-      res.json(JSON.parse(text));
+      res.json(leads);
     } catch (error) {
-      console.error("[Gemini API] Error:", error);
+      console.error("[DeepSeek API] Error:", error);
       res.status(500).json({ error: (error as Error).message });
     }
   });
 
+  // Endpoint para evaluar lead
   app.post("/api/evaluate-lead", async (req, res) => {
-    const apiKey = process.env.GEMINI_API_KEY;
+    const apiKey = process.env.DEEPSEEK_API_KEY;
     if (!apiKey) {
-      return res.status(500).json({ error: "API Key de Gemini no configurada" });
+      return res.status(500).json({ error: "API Key de DeepSeek no configurada" });
     }
     try {
       const { prompt } = req.body;
-      const ai = new GoogleGenAI({ apiKey });
-      const response = await generateWithRetry(ai, {
-        model: "gemini-3-flash-preview",
-        contents: prompt,
+      const openai = new OpenAI({ 
+        baseURL: "https://api.deepseek.com", 
+        apiKey 
       });
-      const textResult = response.text?.trim() || 'No se pudo obtener información.';
+      
+      const response = await generateWithRetry(openai, {
+        model: "deepseek-chat",
+        messages: [
+          { role: "user", content: prompt }
+        ],
+        temperature: 0.7
+      });
+      
+      const textResult = response.choices[0].message.content?.trim() || 'No se pudo obtener información.';
       res.json({ textResult });
     } catch (error) {
-      console.error("[Gemini Eval] Error:", error);
+      console.error("[DeepSeek Eval] Error:", error);
       res.status(500).json({ error: (error as Error).message });
     }
   });
 
+  // Endpoint para generar emails
   app.post("/api/generate-email", async (req, res) => {
-    const apiKey = process.env.GEMINI_API_KEY;
+    const apiKey = process.env.DEEPSEEK_API_KEY;
     if (!apiKey) {
-      return res.status(500).json({ error: "API Key de Gemini no configurada" });
+      return res.status(500).json({ error: "API Key de DeepSeek no configurada" });
     }
     try {
       const { promptDetails, currentHtml } = req.body;
-      const ai = new GoogleGenAI({ apiKey });
+      const openai = new OpenAI({ 
+        baseURL: "https://api.deepseek.com", 
+        apiKey 
+      });
+      
       const onixRules = `Somos "Tecnologías Onix". Nuestro sitio web es tecnologiasonix.com.\nNos gustan los emails limpios y profesionales. El marketing debe ser poco agresivo, con un trato cercano. Muestra de forma clara los beneficios para el cliente en relación al producto o promoción. Sé conciso y al grano.`;
+      
       const systemPrompt = currentHtml
         ? `Eres un experto en marketing y diseño de correos electrónicos. Tu tarea es modificar la siguiente plantilla HTML basándote en la orden del usuario.\nPLANTILLA ACTUAL:\n\`\`\`html\n${currentHtml}\n\`\`\`\n\nDevuelve EXCLUSIVAMENTE el nuevo HTML completo, sin markdown. Mantén estilos inline y responsivo. Usa variables {{name}} y {{business}}.\n${onixRules}\nORDEN: ${promptDetails}`
         : `Eres un experto en marketing y diseño de correos electrónicos. Crea una plantilla HTML para email en frío para vender tecnología a negocios de hostelería. Estructura tabular, compatible con email, moderna, responsiva. Usa variables {{name}} y {{business}}.\n${onixRules}\nDevuelve SOLO código HTML.\nORDEN: ${promptDetails}`;
-      const response = await generateWithRetry(ai, {
-        model: 'gemini-3-flash-preview',
-        contents: systemPrompt
+
+      const response = await generateWithRetry(openai, {
+        model: "deepseek-chat",
+        messages: [
+          { role: "user", content: systemPrompt }
+        ],
+        temperature: 0.7
       });
-      let html = response.text || '';
+      
+      let html = response.choices[0].message.content || '';
       if (html.startsWith('```html')) {
         html = html.replace(/^```html\n/, '').replace(/\n```$/, '');
+      } else if (html.startsWith('```')) {
+        html = html.replace(/^```\n/, '').replace(/\n```$/, '');
       }
       res.json({ html: html.trim() });
     } catch (error) {
-      console.error("[Gemini Email] Error:", error);
+      console.error("[DeepSeek Email] Error:", error);
       res.status(500).json({ error: (error as Error).message });
     }
   });
