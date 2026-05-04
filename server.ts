@@ -252,57 +252,87 @@ async function startServer() {
     }
   });
 
-  // API para enviar emails via Resend API (HTTP, no SMTP)
+  // API para enviar emails
   app.post("/api/send-email", async (req, res) => {
-    const { to, subject, html, leads, userId } = req.body;
+    const { to, subject, html, leads, userId, smtpSettings } = req.body;
 
-    const resendApiKey = process.env.RESEND_API_KEY;
-    const fromEmail = process.env.EMAIL_FROM || "contacto@tecnologiasonix.online";
-    const fromName = process.env.EMAIL_FROM_NAME || "Tecnologias Onix";
-
-    if (!resendApiKey) {
-      return res.status(500).json({ error: "RESEND_API_KEY no configurada en las variables de entorno." });
-    }
-
-    const sendViaResend = async (toEmail: string, emailSubject: string, emailHtml: string) => {
-      const response = await fetch("https://api.resend.com/emails", {
-        method: "POST",
-        headers: {
-          "Authorization": `Bearer ${resendApiKey}`,
-          "Content-Type": "application/json"
-        },
-        body: JSON.stringify({
-          from: `${fromName} <${fromEmail}>`,
-          to: [toEmail],
-          subject: emailSubject,
-          html: emailHtml
-        })
-      });
-
-      if (!response.ok) {
-        const errorData = await response.json();
-        throw new Error(errorData.message || `Resend API error: ${response.status}`);
-      }
-
-      return await response.json();
-    };
+    let smtpHost = process.env.EMAIL_HOST || "smtp.zoho.eu";
+    let smtpPort = parseInt(process.env.EMAIL_PORT || "465");
+    let smtpUser = process.env.EMAIL_USER;
+    let smtpPass = process.env.EMAIL_PASS;
+    let smtpFromName = process.env.EMAIL_FROM_NAME || "Tecnologia Sonix";
 
     try {
-      if (leads && Array.isArray(leads)) {
-        console.log(`[Resend] Envío masivo: ${leads.length} destinatarios`);
-        const results = [];
+      if (smtpSettings && smtpSettings.user && smtpSettings.pass) {
+        smtpHost = smtpSettings.host || smtpHost;
+        smtpPort = parseInt(smtpSettings.port || "465");
+        smtpUser = smtpSettings.user;
+        smtpPass = smtpSettings.pass;
+        smtpFromName = smtpSettings.fromName || smtpFromName;
+      } else if (userId && admin && admin.apps && admin.apps.length) {
+        const userDoc = await admin.firestore().collection('users').doc(userId).get();
+        if (userDoc.exists) {
+          const userSmtpSettings = userDoc.data()?.smtpSettings;
+          if (userSmtpSettings && userSmtpSettings.user && userSmtpSettings.pass) {
+            smtpHost = userSmtpSettings.host || smtpHost;
+            smtpPort = parseInt(userSmtpSettings.port || "465");
+            smtpUser = userSmtpSettings.user;
+            smtpPass = userSmtpSettings.pass;
+            smtpFromName = userSmtpSettings.fromName || smtpFromName;
+          }
+        }
+      }
 
+      if (!smtpUser || !smtpPass) {
+        return res.status(500).json({ error: "Configuración de email no encontrada. Por favor, configura tus credenciales SMTP en la sección de Configuración." });
+      }
+
+      const transporter = nodemailer.createTransport({
+        host: smtpHost,
+        port: smtpPort,
+        secure: smtpPort === 465,
+        auth: {
+          user: smtpUser,
+          pass: smtpPass,
+        },
+        tls: {
+          rejectUnauthorized: false
+        }
+      });
+
+      console.log(`[SMTP] Iniciando proceso de envío. Host: ${smtpHost}, Usuario: ${smtpUser}`);
+
+      // Verificar conexión antes de intentar enviar
+      try {
+        await transporter.verify();
+        console.log("[SMTP] Conexión verificada con éxito.");
+      } catch (verifyError) {
+        console.error("[SMTP] Error de autenticación/conexión:", verifyError);
+        return res.status(500).json({ 
+          error: "Error de autenticación SMTP. Revisa tus credenciales (Usuario y App Password).",
+          details: (verifyError as Error).message 
+        });
+      }
+
+      const fromEmail = smtpUser;
+
+      if (leads && Array.isArray(leads)) {
+        console.log(`[SMTP] Envío masivo detectado: ${leads.length} destinatarios`);
+        const results = [];
         for (const lead of leads) {
-          const personalizedHtml = html
+          let personalizedHtml = html
             .replace(/\{\{name\}\}/g, lead.name || "amigo")
             .replace(/\{\{business\}\}/g, lead.name || "tu negocio")
             .replace(/\{\{notes\}\}/g, lead.notes || "");
 
-          const personalizedSubject = subject.replace(/\{\{business\}\}/g, lead.name || "tu negocio");
-
           try {
-            await sendViaResend(lead.email, personalizedSubject, personalizedHtml);
-
+            await transporter.sendMail({
+              from: `"${smtpFromName}" <${fromEmail}>`,
+              to: lead.email,
+              subject: subject.replace(/\{\{business\}\}/g, lead.name || "tu negocio"),
+              html: personalizedHtml,
+            });
+            
             // Actualizar estado a 'contactado' en Firestore
             if (admin.apps.length && lead.id) {
               try {
@@ -315,27 +345,31 @@ async function startServer() {
               }
             }
 
-            console.log(`[Resend] Enviado con éxito a: ${lead.email}`);
+            console.log(`[SMTP] Enviado con éxito a: ${lead.email}`);
             results.push({ email: lead.email, status: "sent" });
           } catch (err) {
-            console.error(`[Resend] Error enviando a ${lead.email}:`, (err as Error).message);
+            console.error(`[SMTP] Error enviando a ${lead.email}:`, (err as Error).message);
             results.push({ email: lead.email, status: "failed", error: (err as Error).message });
           }
-
-          // ANTIBLOQUEO: espera entre envíos
-          const randomWait = 1000 + Math.floor(Math.random() * 2000);
-          await new Promise(resolve => setTimeout(resolve, randomWait));
+          
+          // ANTIBLOQUEO: Esperar entre 3 y 6 segundos aleatorios entre cada envío para evitar rate-limits y detección de bots
+          const randomEmailWait = 3000 + Math.floor(Math.random() * 3000);
+          await new Promise(resolve => setTimeout(resolve, randomEmailWait));
         }
-
         return res.json({ success: true, results });
       } else {
-        console.log(`[Resend] Envío individual a: ${to}`);
-        const data = await sendViaResend(to, subject, html);
-        console.log(`[Resend] Enviado con éxito. ID: ${data.id}`);
-        return res.json({ success: true, messageId: data.id });
+        console.log(`[SMTP] Envío individual detectado a: ${to}`);
+        const info = await transporter.sendMail({
+          from: `"${smtpFromName}" <${fromEmail}>`,
+          to,
+          subject,
+          html,
+        });
+        console.log(`[SMTP] Enviado con éxito. ID: ${info.messageId}`);
+        return res.json({ success: true, messageId: info.messageId });
       }
     } catch (error) {
-      console.error("[Resend] Error crítico:", error);
+      console.error("[SMTP] Error crítico en el controlador:", error);
       res.status(500).json({ error: (error as Error).message });
     }
   });
