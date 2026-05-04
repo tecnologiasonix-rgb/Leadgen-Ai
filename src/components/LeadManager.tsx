@@ -11,11 +11,12 @@ import { Lead, ManagerFilter, LeadStatus } from '../types';
 interface LeadManagerProps {
   leadService: LeadService;
   user: any;
+  globalLeads: Lead[];
+  isLoading: boolean;
 }
 
-export const LeadManager: React.FC<LeadManagerProps> = ({ leadService, user }) => {
-  const [leads, setLeads] = useState<Lead[]>([]);
-  const [isLoading, setIsLoading] = useState(true);
+export const LeadManager: React.FC<LeadManagerProps> = ({ leadService, user, globalLeads, isLoading }) => {
+  const leads = globalLeads;
   const [activeFilter, setActiveFilter] = useState<ManagerFilter>('all');
   const [editingNotes, setEditingNotes] = useState<string | null>(null);
   const [tempNotes, setTempNotes] = useState('');
@@ -23,41 +24,10 @@ export const LeadManager: React.FC<LeadManagerProps> = ({ leadService, user }) =
   const [selectedProfileId, setSelectedProfileId] = useState<string>('restaurantes');
   const [showConfigModal, setShowConfigModal] = useState(false);
   
+  const [isActionLoading, setIsActionLoading] = useState(false);
   const selectedProfile = useMemo(() => {
     return AI_EVAL_PROFILES.find(p => p.id === selectedProfileId);
   }, [selectedProfileId]);
-
-  useEffect(() => {
-    if (!user) return;
-    
-    setIsLoading(true);
-    const path = 'leads';
-    const q = query(
-      collection(db, path),
-      where("userId", "==", user.uid)
-    );
-
-    const unsubscribe = onSnapshot(q, (snapshot) => {
-      console.log(`[Firestore] Snapshot recibida. Documentos: ${snapshot.docs.length}`);
-      const data = snapshot.docs.map(doc => {
-        const d = doc.data();
-        if (!d.userId) {
-          console.warn(`Lead ${doc.id} no tiene userId!`);
-        }
-        return {
-          id: doc.id,
-          ...d
-        };
-      }) as Lead[];
-      setLeads(data);
-      setIsLoading(false);
-    }, (error) => {
-      console.error('[Firestore] Error en snapshot:', error);
-      setIsLoading(false);
-    });
-
-    return () => unsubscribe();
-  }, [user.uid]);
 
   const filteredLeads = useMemo(() => {
     switch (activeFilter) {
@@ -116,7 +86,7 @@ export const LeadManager: React.FC<LeadManagerProps> = ({ leadService, user }) =
       action: {
         label: 'Eliminar',
         onClick: async () => {
-          setIsLoading(true);
+          setIsActionLoading(true);
           console.log(`[UI] Intentando borrar lead (ID: ${leadId})`);
           try {
             await deleteDoc(doc(db, "leads", leadId));
@@ -124,7 +94,7 @@ export const LeadManager: React.FC<LeadManagerProps> = ({ leadService, user }) =
           } catch (err) {
             console.error('[UI] Error crítico al borrar:', err);
           } finally {
-            setIsLoading(false);
+            setIsActionLoading(false);
           }
         }
       },
@@ -142,7 +112,7 @@ export const LeadManager: React.FC<LeadManagerProps> = ({ leadService, user }) =
       action: {
         label: 'Eliminar',
         onClick: async () => {
-          setIsLoading(true);
+          setIsActionLoading(true);
           console.log(`[UI] Intentando borrar TODOS los leads (Total: ${leads.length}) para ${user.uid}`);
           try {
             const q = query(collection(db, "leads"), where("userId", "==", user.uid));
@@ -159,7 +129,7 @@ export const LeadManager: React.FC<LeadManagerProps> = ({ leadService, user }) =
           } catch (err) {
             console.error('[UI] Error crítico al borrar todo:', err);
           } finally {
-            setIsLoading(false);
+            setIsActionLoading(false);
           }
         }
       },
@@ -336,7 +306,7 @@ export const LeadManager: React.FC<LeadManagerProps> = ({ leadService, user }) =
           </div>
         ) : filteredLeads.length > 0 ? (
           <div className="overflow-x-auto">
-            <table className="w-full text-left min-w-[800px] md:min-w-0">
+            <table className="w-full text-left min-w-[800px]">
               <thead className="bg-slate-50 border-b border-slate-200">
                 <tr>
                   <th className="px-4 py-3 md:px-8 md:py-5 text-[10px] md:text-xs font-black text-slate-400 uppercase tracking-widest">Negocio</th>

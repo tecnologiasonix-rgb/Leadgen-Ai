@@ -54,8 +54,7 @@ export class AIEvaluator {
       }
       const evalTarget = profile?.targetDescription || 'restaurante o local de hostelería';
       const evalInstructions = profile?.instructions || '1. ¿Tiene terraza?\n2. ¿Qué tamaño o capacidad aproximada tiene?\n3. ¿Cómo es el sentimiento general de las reseñas?\n4. ¿Algún punto fuerte o débil a la hora de venderles tecnología?';
-      const prompt = `
-Analiza este negocio (${evalTarget}) de España.
+      const prompt = `Analiza este negocio (${evalTarget}) de España.
 Nombre: ${lead.name}
 Dirección: ${lead.address}
 Código Postal: ${lead.zipCode || 'No especificado'}
@@ -64,19 +63,21 @@ Web: ${lead.website || 'No especificada'}
 Por favor, busca información sobre este negocio y genera una nota corta, concisa y directa (máx 3 líneas) sobre:
 ${evalInstructions}
 
-Dame SOLO el texto de la nota resultante sin saludos ni introducciones, formato texto plano.
-`;
+Dame SOLO el texto de la nota resultante sin saludos ni introducciones, formato texto plano.`;
+      
       const response = await fetch('/api/evaluate-lead', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ prompt })
       });
-      if (!response.ok) throw new Error("Error al consultar Gemini en el servidor");
-      const { textResult } = await response.json();
+      if (!response.ok) throw new Error("API request failed");
+      const data = await response.json();
+      const textResult = data.textResult || 'No se pudo obtener información.';
+
       if (lead.id) {
         await updateDoc(doc(db, 'leads', lead.id), {
           notes: textResult,
-          status: 'contacted',
+          status: 'investigated',
           aiEvaluated: true
         });
       }
@@ -95,9 +96,9 @@ Dame SOLO el texto de la nota resultante sin saludos ni introducciones, formato 
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ promptDetails, currentHtml })
       });
-      if (!response.ok) throw new Error("Error al consultar Gemini en el servidor");
-      const { html } = await response.json();
-      return html;
+      if (!response.ok) throw new Error("API request failed");
+      const data = await response.json();
+      return data.html || '';
     } catch (error) {
       console.error('Error generating email template:', error);
       throw error;

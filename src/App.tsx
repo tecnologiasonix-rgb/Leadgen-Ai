@@ -6,8 +6,9 @@
 import React, { useState, useEffect } from 'react';
 import { Database, LogIn, Loader2 } from 'lucide-react';
 import { onAuthStateChanged, signInWithPopup, GoogleAuthProvider, User } from 'firebase/auth';
+import { collection, query, where, onSnapshot } from 'firebase/firestore';
 import { Toaster, toast } from 'sonner';
-import { auth } from './lib/firebase';
+import { auth, db } from './lib/firebase';
 import { Sidebar } from './components/Sidebar';
 import { Dashboard } from './components/Dashboard';
 import { AIAgent } from './components/AIAgent';
@@ -33,6 +34,10 @@ export default function App() {
   const [finderLeads, setFinderLeads] = useState<Lead[]>([]);
   const [finderSelected, setFinderSelected] = useState<number[]>([]);
 
+  // Global Leads State (Cached)
+  const [globalLeads, setGlobalLeads] = useState<Lead[]>([]);
+  const [globalLeadsLoading, setGlobalLeadsLoading] = useState(true);
+
   useEffect(() => {
     const unsubscribe = onAuthStateChanged(auth, (u) => {
       setUser(u);
@@ -40,6 +45,33 @@ export default function App() {
     });
     return () => unsubscribe();
   }, []);
+
+  useEffect(() => {
+    if (!user) return;
+    
+    // Check localStorage first for immediate display
+    const cached = localStorage.getItem(`leads_${user.uid}`);
+    if (cached) {
+      try {
+        setGlobalLeads(JSON.parse(cached));
+        setGlobalLeadsLoading(false);
+      } catch (e) {}
+    }
+
+    const q = query(collection(db, 'leads'), where("userId", "==", user.uid));
+    const unsubscribe = onSnapshot(q, (snapshot) => {
+      const data = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() })) as Lead[];
+      setGlobalLeads(data);
+      setGlobalLeadsLoading(false);
+      // Save full array to localStorage to persist across reloads
+      localStorage.setItem(`leads_${user.uid}`, JSON.stringify(data));
+    }, (error) => {
+      console.error('Error fetching leads:', error);
+      setGlobalLeadsLoading(false);
+    });
+
+    return () => unsubscribe();
+  }, [user]);
 
   const handleLogin = async () => {
     try {
@@ -96,17 +128,17 @@ export default function App() {
   }
 
   return (
-    <div className="min-h-screen bg-slate-50 flex flex-col md:flex-row pb-16 md:pb-0">
+    <div className="min-h-screen bg-slate-50 pb-16 md:pb-0">
       <Toaster position="top-right" richColors />
       <Sidebar currentView={currentView} setCurrentView={setCurrentView} user={user} />
       
       {/* Background Agent */}
-      <AIAgent user={user} visible={currentView === 'finder' || currentView === 'manager'} />
+      <AIAgent user={user} visible={currentView === 'finder' || currentView === 'manager'} globalLeads={globalLeads} />
 
-      <main className="flex-1 flex flex-col md:ml-64 p-4 lg:p-10 w-full pt-20 md:pt-10 overflow-x-hidden">
-        <div className="w-full max-w-6xl mx-auto">
+      <main className="md:ml-64 p-4 lg:p-10 pt-20 md:pt-10 overflow-x-hidden min-h-screen flex flex-col">
+        <div className="w-full max-w-6xl mx-auto flex-1">
           {currentView === 'dashboard' && (
-            <Dashboard user={user} />
+            <Dashboard user={user} globalLeads={globalLeads} isLoading={globalLeadsLoading} />
           )}
           {currentView === 'finder' && (
             <LeadFinder 
@@ -123,13 +155,13 @@ export default function App() {
             />
           )}
           {currentView === 'manager' && (
-            <LeadManager leadService={leadService} user={user} />
+            <LeadManager leadService={leadService} user={user} globalLeads={globalLeads} isLoading={globalLeadsLoading} />
           )}
           {currentView === 'campaigns' && (
-            <EmailCampaigns />
+            <EmailCampaigns globalLeads={globalLeads} isLoading={globalLeadsLoading} />
           )}
           {currentView === 'calls' && (
-            <CallCampaigns />
+            <CallCampaigns globalLeads={globalLeads} isLoading={globalLeadsLoading} />
           )}
           {currentView === 'billing' && (
             <Pricing user={user} />

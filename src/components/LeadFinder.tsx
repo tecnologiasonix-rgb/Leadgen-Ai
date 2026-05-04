@@ -75,9 +75,12 @@ export const LeadFinder: React.FC<LeadFinderProps> = ({
     setIsLoading(true);
     setError(null);
     setSelectedLeads([]);
+    setLeads([]); // Limpiar la lista actual antes de buscar
     try {
       const zipList = zipCode.split(/[, ]+/).filter(z => z.length >= 3);
-      const results = await leadService.searchLeads(zipList, businessType);
+      const results = await leadService.searchLeads(zipList, businessType, (newLeads) => {
+        setLeads(newLeads); // Actualización progresiva en UI
+      });
       setLeads(results);
     } catch (err) {
       setError('Error al buscar leads.');
@@ -187,7 +190,7 @@ export const LeadFinder: React.FC<LeadFinderProps> = ({
       </div>
 
       <AnimatePresence mode="wait">
-        {isLoading ? (
+        {isLoading && leads.length === 0 ? (
           <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }} className="bg-white rounded-3xl border border-slate-200 p-20 text-center space-y-6">
             <Loader2 className="w-12 h-12 animate-spin text-indigo-600 mx-auto" />
             <div className="space-y-1">
@@ -199,6 +202,7 @@ export const LeadFinder: React.FC<LeadFinderProps> = ({
           <motion.div initial={{ opacity: 0, y: 20 }} animate={{ opacity: 1, y: 0 }} className="space-y-6">
             <div className="flex items-center justify-between bg-slate-900 p-4 rounded-2xl text-white">
               <div className="flex items-center gap-6 px-4">
+                {isLoading && <Loader2 className="w-5 h-5 animate-spin text-indigo-400" />}
                 <div className="text-center">
                   <div className="text-[10px] font-black text-slate-400 uppercase tracking-widest">Encontrados</div>
                   <div className="text-lg font-bold">{stats.total}</div>
@@ -218,8 +222,8 @@ export const LeadFinder: React.FC<LeadFinderProps> = ({
               </button>
             </div>
 
-            <div className="bg-white rounded-3xl border border-slate-200 overflow-hidden">
-               <table className="w-full text-left">
+            <div className="bg-white rounded-3xl border border-slate-200 overflow-x-auto">
+               <table className="w-full text-left min-w-[600px]">
                 <thead className="bg-slate-50 border-b border-slate-200">
                   <tr>
                     <th 

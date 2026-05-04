@@ -6,22 +6,11 @@ import { Lead } from '../types';
 import { Sparkles, Play, Square, Loader2, X } from 'lucide-react';
 import { AIEvaluator } from '../services/AIEvaluator';
 
-export const AIAgent: React.FC<{ user: User; visible?: boolean }> = ({ user, visible = true }) => {
-  const [leads, setLeads] = useState<Lead[]>([]);
+export const AIAgent: React.FC<{ user: User; visible?: boolean, globalLeads?: Lead[] }> = ({ user, visible = true, globalLeads = [] }) => {
+  const leads = globalLeads;
   const [isRunning, setIsRunning] = useState(false);
   const [currentEvalId, setCurrentEvalId] = useState<string | null>(null);
   const [isOpen, setIsOpen] = useState(true);
-
-  useEffect(() => {
-    if (!user) return;
-    const q = query(collection(db, 'leads'), where('userId', '==', user.uid));
-    const unsubscribe = onSnapshot(q, (snapshot) => {
-      const allLeads = snapshot.docs.map(d => ({ id: d.id, ...d.data() } as Lead));
-      setLeads(allLeads);
-    });
-
-    return () => unsubscribe();
-  }, [user]);
 
   const pendingLeads = leads.filter(l => !l.aiEvaluated);
 

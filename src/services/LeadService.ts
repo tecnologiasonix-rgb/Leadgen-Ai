@@ -112,8 +112,9 @@ export class LeadService {
     }
   }
 
-  async searchLeads(zipCodes: string[], businessType: string): Promise<Lead[]> {
+  async searchLeads(zipCodes: string[], businessType: string, onProgress?: (leads: Lead[]) => void): Promise<Lead[]> {
     const allLeads: Lead[] = [];
+    
     for (const zip of zipCodes) {
       const prompt = `Actúa como un experto en Inteligencia de Ventas y OSINT. Tu misión es extraer una lista EXHAUSTIVA (al menos 40 si existen) de leads del tipo "${businessType}" en el código postal ${zip.trim()} de España.
       
@@ -123,25 +124,35 @@ export class LeadService {
       3. CALIDAD DE DATOS: Nombre, dirección y teléfono son obligatorios. Si NO tiene sitio web o email, deja el campo EXACTAMENTE como una cadena vacía "". No uses "N/A" ni otros textos.
       4. CUMPLIMIENTO: Asegúrate de que todos los establecimientos pertenezcan al CP ${zip.trim()}.
       
-      Responde ÚNICAMENTE con el JSON array solicitado.`;
+      Responde ÚNICAMENTE con un JSON object válido que contenga una propiedad "leads", la cual es un array de objetos con esta estructura: { "name": "...", "address": "...", "phone": "...", "email": "...", "website": "...", "type": "..." }`;
       try {
         const response = await fetch('/api/generate-leads', {
           method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
+          headers: {
+            'Content-Type': 'application/json'
+          },
           body: JSON.stringify({ prompt })
         });
         
         if (!response.ok) {
-          const errData = await response.json().catch(() => ({}));
-          throw new Error(`Error ${response.status}: ${errData.error || 'Error al consultar Gemini'}`);
+          const errorData = await response.json().catch(() => ({}));
+          throw new Error(errorData.error || `HTTP Error ${response.status}`);
         }
         
-        const leads = await response.json();
-        if (leads && Array.isArray(leads)) allLeads.push(...leads);
+        const data = await response.json();
+        const leads = data.leads || data || [];
+        
+        if (Array.isArray(leads)) {
+          allLeads.push(...leads);
+          if (onProgress) {
+             const uniqueFinal = Array.from(new Map(allLeads.map(item => [`${item.name}-${item.address}`, item])).values());
+             onProgress(uniqueFinal);
+          }
+        }
       } catch (error) {
         console.error(`Error en zona ${zip}:`, error);
       }
-      await new Promise(resolve => setTimeout(resolve, 8000));
+      await new Promise(resolve => setTimeout(resolve, 3000));
     }
     return Array.from(new Map(allLeads.map(item => [`${item.name}-${item.address}`, item])).values());
   }

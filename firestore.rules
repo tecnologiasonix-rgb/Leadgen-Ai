@@ -42,8 +42,13 @@ service cloud.firestore {
     }
 
     match /leads/{leadId} {
-      allow read, write: if isSignedIn();
+      allow read: if isSignedIn() && existing().userId == request.auth.uid;
+      allow create: if isSignedIn() && isValidLead(incoming());
+      allow update: if isSignedIn() && existing().userId == request.auth.uid && incoming().userId == existing().userId;
+      allow delete: if isSignedIn() && existing().userId == request.auth.uid;
+      allow list: if isSignedIn() && resource.data.userId == request.auth.uid;
     }
+
     // EmailTemplate Validation
     function isValidEmailTemplate(data) {
       return data.keys().hasAll(['name', 'subject', 'html', 'userId', 'createdAt']) &&
@@ -55,7 +60,11 @@ service cloud.firestore {
     }
 
     match /emailTemplates/{templateId} {
-      allow read, write: if isSignedIn();
+      allow read: if isSignedIn() && existing().userId == request.auth.uid;
+      allow create: if isSignedIn() && isValidEmailTemplate(incoming());
+      allow update: if isSignedIn() && existing().userId == request.auth.uid && incoming().userId == existing().userId;
+      allow delete: if isSignedIn() && existing().userId == request.auth.uid;
+      allow list: if isSignedIn() && resource.data.userId == request.auth.uid;
     }
     
     match /userStats/{userId} {

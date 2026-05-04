@@ -51,25 +51,14 @@ function handleFirestoreError(error: unknown, operationType: OperationType, path
   throw new Error(JSON.stringify(errInfo));
 }
 
-export const Dashboard: React.FC<{ user: any }> = ({ user }) => {
-  const [totalLeads, setTotalLeads] = useState(0);
-  const [callLeads, setCallLeads] = useState(0);
+export const Dashboard: React.FC<{ user: any, globalLeads: Lead[], isLoading: boolean }> = ({ user, globalLeads, isLoading }) => {
   const [emailsSent, setEmailsSent] = useState(0);
+
+  const totalLeads = globalLeads.length;
+  const callLeads = globalLeads.filter(l => !!l.phone?.trim() && l.phone !== 'No disponible').length;
 
   useEffect(() => {
     if (!user) return;
-
-    // Listen to all leads for this user
-    const qLeads = query(collection(db, 'leads'), where('userId', '==', user.uid));
-    const unsubscribeLeads = onSnapshot(qLeads, (snapshot) => {
-      const data = snapshot.docs.map(doc => doc.data() as Lead);
-      setTotalLeads(data.length);
-      
-      const hasPhone = data.filter(l => !!l.phone?.trim() && l.phone !== 'No disponible');
-      setCallLeads(hasPhone.length);
-    }, (error) => {
-      handleFirestoreError(error, OperationType.LIST, 'leads');
-    });
 
     // Listen to user stats for emails sent
     const unsubscribeStats = onSnapshot(doc(db, 'userStats', user.uid), (docSnap) => {
@@ -83,7 +72,6 @@ export const Dashboard: React.FC<{ user: any }> = ({ user }) => {
     });
 
     return () => {
-      unsubscribeLeads();
       unsubscribeStats();
     };
   }, [user]);

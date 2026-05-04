@@ -26,8 +26,8 @@ interface UserTemplate {
   createdAt: string;
 }
 
-export const EmailCampaigns: React.FC = () => {
-  const [leads, setLeads] = useState<Lead[]>([]);
+export const EmailCampaigns: React.FC<{ globalLeads: any[], isLoading: boolean }> = ({ globalLeads, isLoading }) => {
+  const leads = globalLeads as Lead[];
   const [selectedLeads, setSelectedLeads] = useState<string[]>([]);
   
   const [templates, setTemplates] = useState<UserTemplate[]>([]);
@@ -55,13 +55,6 @@ export const EmailCampaigns: React.FC = () => {
   useEffect(() => {
     if (!user) return;
     
-    // Listen to leads
-    const qLeads = query(collection(db, 'leads'), where('userId', '==', user.uid));
-    const unsubscribeLeads = onSnapshot(qLeads, (snapshot) => {
-      const data = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() })) as Lead[];
-      setLeads(data);
-    });
-
     // Listen to user templates
     const qTemplates = query(collection(db, 'emailTemplates'), where('userId', '==', user.uid));
     const unsubscribeTemplates = onSnapshot(qTemplates, async (snapshot) => {
@@ -89,7 +82,6 @@ export const EmailCampaigns: React.FC = () => {
     });
 
     return () => {
-      unsubscribeLeads();
       unsubscribeTemplates();
     };
   }, [user]);
@@ -424,8 +416,8 @@ export const EmailCampaigns: React.FC = () => {
             </div>
           </div>
 
-          <div className="bg-white rounded-2xl border border-gray-100 shadow-sm overflow-hidden max-h-[400px] overflow-y-auto">
-            <table className="w-full text-left">
+          <div className="bg-white rounded-2xl border border-gray-100 shadow-sm overflow-x-auto overflow-y-auto max-h-[400px]">
+            <table className="w-full text-left min-w-[600px]">
               <thead className="bg-gray-50 text-xs text-gray-500 uppercase">
                 <tr>
                   <th className="px-4 py-3 w-10">Select</th>

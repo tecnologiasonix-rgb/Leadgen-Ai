@@ -6,8 +6,8 @@ import { motion, AnimatePresence } from 'motion/react';
 import { toast } from 'sonner';
 import { Lead, LeadStatus } from '../types';
 
-export const CallCampaigns: React.FC = () => {
-  const [leads, setLeads] = useState<Lead[]>([]);
+export const CallCampaigns: React.FC<{ globalLeads: Lead[], isLoading: boolean }> = ({ globalLeads, isLoading }) => {
+  const leads = globalLeads;
   const [activeFilter, setActiveFilter] = useState<'all' | 'phone-only' | 'no-answer'>('phone-only');
   const [searchQuery, setSearchQuery] = useState('');
   const [editingNotes, setEditingNotes] = useState<string | null>(null);
@@ -25,13 +25,6 @@ export const CallCampaigns: React.FC = () => {
         setHasAccess(sub.plan === 'pro' || sub.plan === 'enterprise');
       });
     });
-
-    const q = query(collection(db, 'leads'), where('userId', '==', user.uid));
-    const unsubscribe = onSnapshot(q, (snapshot) => {
-      const data = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() })) as Lead[];
-      setLeads(data);
-    });
-    return () => unsubscribe();
   }, [user]);
 
   // Solo leads que tengan TEFELONO
