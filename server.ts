@@ -253,15 +253,18 @@ async function startServer() {
   });
 
   // API para enviar emails
+  // API para enviar emails — intenta SMTP primero, si falla usa Resend API
   app.post("/api/send-email", async (req, res) => {
     const { to, subject, html, leads, userId, smtpSettings } = req.body;
 
+    // --- Configuración SMTP ---
     let smtpHost = process.env.EMAIL_HOST || "smtp.zoho.eu";
     let smtpPort = parseInt(process.env.EMAIL_PORT || "465");
     let smtpUser = process.env.EMAIL_USER;
     let smtpPass = process.env.EMAIL_PASS;
-    let smtpFromName = process.env.EMAIL_FROM_NAME || "Tecnologia Sonix";
+    let smtpFromName = process.env.EMAIL_FROM_NAME || "Tecnologias Onix";
 
+    // Intentar leer smtpSettings de Firestore (opcional, no bloquea si falla)
     try {
       if (smtpSettings && smtpSettings.user && smtpSettings.pass) {
         smtpHost = smtpSettings.host || smtpHost;
@@ -282,58 +285,93 @@ async function startServer() {
           }
         }
       }
+    } catch (firestoreErr) {
+      console.warn("[Email] No se pudo leer smtpSettings de Firestore, usando variables de entorno:", (firestoreErr as Error).message);
+    }
 
-      if (!smtpUser || !smtpPass) {
-        return res.status(500).json({ error: "Configuración de email no encontrada. Por favor, configura tus credenciales SMTP en la sección de Configuración." });
+    // --- Configuración Resend API (fallback) ---
+    const resendApiKey = process.env.RESEND_API_KEY;
+    const resendFrom = process.env.EMAIL_FROM || "contacto@tecnologiasonix.online";
+
+    // --- Función envío por Resend API ---
+    const sendViaResendApi = async (toEmail: string, emailSubject: string, emailHtml: string) => {
+      console.log(`[Resend API] Enviando a: ${toEmail}`);
+      const response = await fetch("https://api.resend.com/emails", {
+        method: "POST",
+        headers: {
+          "Authorization": `Bearer ${resendApiKey}`,
+          "Content-Type": "application/json"
+        },
+        body: JSON.stringify({
+          from: `${smtpFromName} <${resendFrom}>`,
+          to: [toEmail],
+          subject: emailSubject,
+          html: emailHtml
+        })
+      });
+      if (!response.ok) {
+        const errorData = await response.json();
+        throw new Error(errorData.message || `Resend API error: ${response.status}`);
       }
+      const data = await response.json();
+      console.log(`[Resend API] Enviado con éxito a: ${toEmail}`);
+      return data;
+    };
 
+    // --- Función envío por SMTP ---
+    const sendViaSmtp = async (toEmail: string, emailSubject: string, emailHtml: string) => {
+      if (!smtpUser || !smtpPass) throw new Error("Credenciales SMTP no configuradas");
+      console.log(`[SMTP] Enviando a: ${toEmail} via ${smtpHost}`);
       const transporter = nodemailer.createTransport({
         host: smtpHost,
         port: smtpPort,
         secure: smtpPort === 465,
-        auth: {
-          user: smtpUser,
-          pass: smtpPass,
-        },
-        tls: {
-          rejectUnauthorized: false
-        }
+        auth: { user: smtpUser, pass: smtpPass },
+        tls: { rejectUnauthorized: false }
       });
+      await transporter.verify();
+      const info = await transporter.sendMail({
+        from: `"${smtpFromName}" <${smtpUser}>`,
+        to: toEmail,
+        subject: emailSubject,
+        html: emailHtml
+      });
+      console.log(`[SMTP] Enviado con éxito a: ${toEmail}`);
+      return info;
+    };
 
-      console.log(`[SMTP] Iniciando proceso de envío. Host: ${smtpHost}, Usuario: ${smtpUser}`);
-
-      // Verificar conexión antes de intentar enviar
-      try {
-        await transporter.verify();
-        console.log("[SMTP] Conexión verificada con éxito.");
-      } catch (verifyError) {
-        console.error("[SMTP] Error de autenticación/conexión:", verifyError);
-        return res.status(500).json({ 
-          error: "Error de autenticación SMTP. Revisa tus credenciales (Usuario y App Password).",
-          details: (verifyError as Error).message 
-        });
+    // --- Función principal con fallback ---
+    const sendEmail = async (toEmail: string, emailSubject: string, emailHtml: string) => {
+      // Intenta SMTP primero
+      if (smtpUser && smtpPass) {
+        try {
+          return await sendViaSmtp(toEmail, emailSubject, emailHtml);
+        } catch (smtpErr) {
+          console.warn(`[SMTP] Falló, intentando Resend API:`, (smtpErr as Error).message);
+        }
       }
+      // Fallback: Resend API
+      if (resendApiKey) {
+        return await sendViaResendApi(toEmail, emailSubject, emailHtml);
+      }
+      throw new Error("No hay método de envío disponible. Configura SMTP o RESEND_API_KEY.");
+    };
 
-      const fromEmail = smtpUser;
-
+    try {
       if (leads && Array.isArray(leads)) {
-        console.log(`[SMTP] Envío masivo detectado: ${leads.length} destinatarios`);
+        console.log(`[Email] Envío masivo: ${leads.length} destinatarios`);
         const results = [];
         for (const lead of leads) {
-          let personalizedHtml = html
+          const personalizedHtml = html
             .replace(/\{\{name\}\}/g, lead.name || "amigo")
             .replace(/\{\{business\}\}/g, lead.name || "tu negocio")
             .replace(/\{\{notes\}\}/g, lead.notes || "");
+          const personalizedSubject = subject.replace(/\{\{business\}\}/g, lead.name || "tu negocio");
 
           try {
-            await transporter.sendMail({
-              from: `"${smtpFromName}" <${fromEmail}>`,
-              to: lead.email,
-              subject: subject.replace(/\{\{business\}\}/g, lead.name || "tu negocio"),
-              html: personalizedHtml,
-            });
-            
-            // Actualizar estado a 'contactado' en Firestore
+            await sendEmail(lead.email, personalizedSubject, personalizedHtml);
+
+            // Actualizar estado en Firestore (opcional, no bloquea si falla)
             if (admin.apps.length && lead.id) {
               try {
                 await admin.firestore().collection('leads').doc(lead.id).update({
@@ -341,35 +379,26 @@ async function startServer() {
                   updatedAt: admin.firestore.FieldValue.serverTimestamp()
                 });
               } catch (fsError) {
-                console.error(`[Firestore] Error actualizando lead ${lead.id}:`, fsError);
+                console.warn(`[Firestore] No se pudo actualizar lead ${lead.id}:`, (fsError as Error).message);
               }
             }
 
-            console.log(`[SMTP] Enviado con éxito a: ${lead.email}`);
             results.push({ email: lead.email, status: "sent" });
           } catch (err) {
-            console.error(`[SMTP] Error enviando a ${lead.email}:`, (err as Error).message);
+            console.error(`[Email] Error enviando a ${lead.email}:`, (err as Error).message);
             results.push({ email: lead.email, status: "failed", error: (err as Error).message });
           }
-          
-          // ANTIBLOQUEO: Esperar entre 3 y 6 segundos aleatorios entre cada envío para evitar rate-limits y detección de bots
-          const randomEmailWait = 3000 + Math.floor(Math.random() * 3000);
-          await new Promise(resolve => setTimeout(resolve, randomEmailWait));
+
+          const randomWait = 1000 + Math.floor(Math.random() * 2000);
+          await new Promise(resolve => setTimeout(resolve, randomWait));
         }
         return res.json({ success: true, results });
       } else {
-        console.log(`[SMTP] Envío individual detectado a: ${to}`);
-        const info = await transporter.sendMail({
-          from: `"${smtpFromName}" <${fromEmail}>`,
-          to,
-          subject,
-          html,
-        });
-        console.log(`[SMTP] Enviado con éxito. ID: ${info.messageId}`);
-        return res.json({ success: true, messageId: info.messageId });
+        await sendEmail(to, subject, html);
+        return res.json({ success: true });
       }
     } catch (error) {
-      console.error("[SMTP] Error crítico en el controlador:", error);
+      console.error("[Email] Error crítico:", error);
       res.status(500).json({ error: (error as Error).message });
     }
   });
