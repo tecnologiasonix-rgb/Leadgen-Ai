@@ -12,6 +12,9 @@ export interface Lead {
   status?: LeadStatus;
   notes?: string;
   aiEvaluated?: boolean;
+  emailCampaignContacted?: boolean;
+  emailCampaignContactedAt?: string;
+  emailCampaignTemplate?: string;
 }
 
 export type LeadStatus = 'new' | 'investigated' | 'contacted' | 'interested' | 'not-interested' | 'client';
