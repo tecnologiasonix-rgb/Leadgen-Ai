@@ -55,26 +55,29 @@ export const EmailCampaigns: React.FC<{ globalLeads: any[], isLoading: boolean }
 
   useEffect(() => {
     if (!user) return;
-    
-    // Listen to user templates
+
+    let seeded = false;
+
     const qTemplates = query(collection(db, 'emailTemplates'), where('userId', '==', user.uid));
     const unsubscribeTemplates = onSnapshot(qTemplates, async (snapshot) => {
       const data = snapshot.docs.map(snap => ({ id: snap.id, ...snap.data() })) as UserTemplate[];
-      
-      // Migrate existing seeded templates that lack seedId field (match by name)
-      for (const existing of data) {
-        if (!(existing as any).seedId) {
-          const match = EMAIL_TEMPLATES.find(t => t.name === existing.name);
-          if (match) {
-            updateDoc(doc(db, 'emailTemplates', existing.id), { seedId: match.id }).catch(() => {});
+
+      if (!seeded) {
+        seeded = true;
+
+        // Migrate existing templates that lack seedId (match by name, fire-and-forget)
+        for (const existing of data) {
+          if (!(existing as any).seedId) {
+            const match = EMAIL_TEMPLATES.find(t => t.name === existing.name);
+            if (match) {
+              updateDoc(doc(db, 'emailTemplates', existing.id), { seedId: match.id }).catch(() => {});
+            }
           }
         }
-      }
 
-      // Seed any default templates that are missing (by id)
-      const existingIds = new Set(data.map((d: any) => d.seedId).filter(Boolean));
-      const missing = EMAIL_TEMPLATES.filter(t => !existingIds.has(t.id));
-      if (missing.length > 0) {
+        // Add only missing default templates (by seedId)
+        const existingIds = new Set(data.map((d: any) => d.seedId).filter(Boolean));
+        const missing = EMAIL_TEMPLATES.filter(t => !existingIds.has(t.id));
         for (const t of missing) {
           await addDoc(collection(db, 'emailTemplates'), {
             seedId: t.id,
@@ -86,11 +89,11 @@ export const EmailCampaigns: React.FC<{ globalLeads: any[], isLoading: boolean }
             createdAt: new Date().toISOString()
           });
         }
-      } else {
-        setTemplates(data);
-        if (data.length > 0 && !selectedTemplate) {
-          setSelectedTemplate(data[0]);
-        }
+      }
+
+      setTemplates(data);
+      if (data.length > 0 && !selectedTemplate) {
+        setSelectedTemplate(data[0]);
       }
     });
 
