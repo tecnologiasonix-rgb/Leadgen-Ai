@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import { Save, Server, Loader2, Check } from 'lucide-react';
+import { Save, Server, Loader2, Check, Key } from 'lucide-react';
 import { doc, getDoc, setDoc } from 'firebase/firestore';
 import { db } from '../lib/firebase';
 import { motion } from 'motion/react';
@@ -15,6 +15,7 @@ export const Settings: React.FC<SettingsProps> = ({ user }) => {
   const [emailUser, setEmailUser] = useState('');
   const [pass, setPass] = useState('');
   const [fromName, setFromName] = useState('');
+  const [resendApiKey, setResendApiKey] = useState('');
   const [isLoading, setIsLoading] = useState(false);
   const [isSaved, setIsSaved] = useState(false);
 
@@ -31,6 +32,8 @@ export const Settings: React.FC<SettingsProps> = ({ user }) => {
           setPass(settings.pass || '');
           setFromName(settings.fromName || '');
         }
+        const resendKey = userDoc.data()?.resendApiKey;
+        if (resendKey) setResendApiKey(resendKey);
       }
     };
     fetchSettings();
@@ -50,7 +53,8 @@ export const Settings: React.FC<SettingsProps> = ({ user }) => {
           user: emailUser,
           pass,
           fromName
-        }
+        },
+        resendApiKey: resendApiKey.trim()
       }, { merge: true });
       setIsSaved(true);
       toast.success('Configuración guardada correctamente.');
@@ -164,6 +168,53 @@ export const Settings: React.FC<SettingsProps> = ({ user }) => {
             </button>
           </div>
         </form>
+      </div>
+      <div className="bg-white rounded-2xl border border-slate-200 p-6 md:p-8 shadow-sm">
+        <div className="flex items-center gap-3 mb-6">
+          <div className="w-10 h-10 bg-violet-50 text-violet-600 rounded-xl flex items-center justify-center">
+            <Key className="w-5 h-5" />
+          </div>
+          <div>
+            <h3 className="font-bold text-slate-900">Resend API <span className="text-xs font-normal text-slate-400 ml-1">(fallback si SMTP falla)</span></h3>
+            <p className="text-xs text-slate-500">Si el SMTP falla, los emails se envían automáticamente por Resend.</p>
+          </div>
+        </div>
+
+        <div className="space-y-4">
+          <div>
+            <label className="block text-xs font-bold text-slate-700 mb-1">Resend API Key</label>
+            <input
+              type="password"
+              placeholder="re_xxxxxxxxxxxxxxxxxxxxxxxx"
+              value={resendApiKey}
+              onChange={(e) => setResendApiKey(e.target.value)}
+              className="w-full bg-slate-50 border border-slate-200 text-slate-900 text-sm rounded-xl px-4 py-3 focus:outline-none focus:ring-2 focus:ring-violet-500 transition-shadow font-mono"
+            />
+            <p className="text-xs text-slate-400 mt-1">Consíguela en <a href="https://resend.com/api-keys" target="_blank" rel="noopener noreferrer" className="text-violet-500 hover:underline">resend.com/api-keys</a></p>
+          </div>
+
+          <div className="pt-2">
+            <button
+              onClick={handleSave}
+              disabled={isLoading}
+              className="w-full flex items-center justify-center gap-2 bg-violet-600 hover:bg-violet-700 text-white font-bold px-6 py-3 rounded-xl transition-all shadow-md active:scale-[0.98] disabled:opacity-70 disabled:cursor-not-allowed"
+            >
+              {isLoading ? (
+                <>
+                  <Loader2 className="w-5 h-5 animate-spin" /> Guardando...
+                </>
+              ) : isSaved ? (
+                <>
+                  <Check className="w-5 h-5" /> ¡Guardado!
+                </>
+              ) : (
+                <>
+                  <Save className="w-5 h-5" /> Guardar API Key
+                </>
+              )}
+            </button>
+          </div>
+        </div>
       </div>
     </motion.div>
   );
