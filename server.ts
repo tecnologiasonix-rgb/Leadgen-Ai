@@ -265,6 +265,7 @@ async function startServer() {
     let smtpFromName = process.env.EMAIL_FROM_NAME || "Tecnologias Onix";
 
     let resendApiKey = process.env.RESEND_API_KEY;
+    let resendFrom = process.env.EMAIL_FROM || "contacto@tecnologiasonix.online";
 
     // Leer configuración de usuario desde Firestore (una sola petición para SMTP + Resend)
     try {
@@ -289,6 +290,9 @@ async function startServer() {
           if (userData.resendApiKey && userData.resendApiKey.trim()) {
             resendApiKey = userData.resendApiKey.trim();
           }
+          if (userData.resendFrom && userData.resendFrom.trim()) {
+            resendFrom = userData.resendFrom.trim();
+          }
         }
       }
     } catch (firestoreErr) {
@@ -296,7 +300,6 @@ async function startServer() {
     }
 
     // --- Configuración Resend API (fallback) ---
-    const resendFrom = process.env.EMAIL_FROM || "contacto@tecnologiasonix.online";
 
     // --- Función envío por Resend API ---
     const sendViaResendApi = async (toEmail: string, emailSubject: string, emailHtml: string) => {
