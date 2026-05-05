@@ -59,13 +59,25 @@ export const EmailCampaigns: React.FC<{ globalLeads: any[], isLoading: boolean }
     // Listen to user templates
     const qTemplates = query(collection(db, 'emailTemplates'), where('userId', '==', user.uid));
     const unsubscribeTemplates = onSnapshot(qTemplates, async (snapshot) => {
-      const data = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() })) as UserTemplate[];
+      const data = snapshot.docs.map(snap => ({ id: snap.id, ...snap.data() })) as UserTemplate[];
       
-      // If user has no templates at all, seed with the default ones
-      if (data.length === 0 && !localStorage.getItem(`seeded_templates_${user.uid}`)) {
-        localStorage.setItem(`seeded_templates_${user.uid}`, 'true');
-        for (const t of EMAIL_TEMPLATES) {
+      // Migrate existing seeded templates that lack seedId field (match by name)
+      for (const existing of data) {
+        if (!(existing as any).seedId) {
+          const match = EMAIL_TEMPLATES.find(t => t.name === existing.name);
+          if (match) {
+            updateDoc(doc(db, 'emailTemplates', existing.id), { seedId: match.id }).catch(() => {});
+          }
+        }
+      }
+
+      // Seed any default templates that are missing (by id)
+      const existingIds = new Set(data.map((d: any) => d.seedId).filter(Boolean));
+      const missing = EMAIL_TEMPLATES.filter(t => !existingIds.has(t.id));
+      if (missing.length > 0) {
+        for (const t of missing) {
           await addDoc(collection(db, 'emailTemplates'), {
+            seedId: t.id,
             name: t.name,
             subject: t.subject,
             description: t.description,
