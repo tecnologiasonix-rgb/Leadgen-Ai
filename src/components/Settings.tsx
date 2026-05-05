@@ -75,13 +75,14 @@ export const Settings: React.FC<SettingsProps> = ({ user }) => {
     <motion.div 
       initial={{ opacity: 0, y: 20 }}
       animate={{ opacity: 1, y: 0 }}
-      className="max-w-2xl mx-auto space-y-6"
+      className="max-w-5xl mx-auto space-y-6"
     >
       <div className="space-y-1">
         <h2 className="text-2xl font-black text-slate-900 tracking-tight">Configuración</h2>
         <p className="text-sm text-slate-500">Configura tus credenciales SMTP para enviar correos desde tu propia cuenta.</p>
       </div>
 
+      <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
       <div className="bg-white rounded-2xl border border-slate-200 p-6 md:p-8 shadow-sm">
         <div className="flex items-center gap-3 mb-6">
           <div className="w-10 h-10 bg-indigo-50 text-indigo-600 rounded-xl flex items-center justify-center">
@@ -231,6 +232,7 @@ export const Settings: React.FC<SettingsProps> = ({ user }) => {
             </button>
           </div>
         </div>
+      </div>
       </div>
     </motion.div>
   );
