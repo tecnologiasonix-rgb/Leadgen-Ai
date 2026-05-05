@@ -16,6 +16,7 @@ export const Settings: React.FC<SettingsProps> = ({ user }) => {
   const [pass, setPass] = useState('');
   const [fromName, setFromName] = useState('');
   const [resendApiKey, setResendApiKey] = useState('');
+  const [resendFrom, setResendFrom] = useState('');
   const [isLoading, setIsLoading] = useState(false);
   const [isSaved, setIsSaved] = useState(false);
 
@@ -34,6 +35,8 @@ export const Settings: React.FC<SettingsProps> = ({ user }) => {
         }
         const resendKey = userDoc.data()?.resendApiKey;
         if (resendKey) setResendApiKey(resendKey);
+        const resendFromEmail = userDoc.data()?.resendFrom;
+        if (resendFromEmail) setResendFrom(resendFromEmail);
       }
     };
     fetchSettings();
@@ -54,7 +57,8 @@ export const Settings: React.FC<SettingsProps> = ({ user }) => {
           pass,
           fromName
         },
-        resendApiKey: resendApiKey.trim()
+        resendApiKey: resendApiKey.trim(),
+        resendFrom: resendFrom.trim()
       }, { merge: true });
       setIsSaved(true);
       toast.success('Configuración guardada correctamente.');
@@ -191,6 +195,18 @@ export const Settings: React.FC<SettingsProps> = ({ user }) => {
               className="w-full bg-slate-50 border border-slate-200 text-slate-900 text-sm rounded-xl px-4 py-3 focus:outline-none focus:ring-2 focus:ring-violet-500 transition-shadow font-mono"
             />
             <p className="text-xs text-slate-400 mt-1">Consíguela en <a href="https://resend.com/api-keys" target="_blank" rel="noopener noreferrer" className="text-violet-500 hover:underline">resend.com/api-keys</a></p>
+          </div>
+
+          <div>
+            <label className="block text-xs font-bold text-slate-700 mb-1">Email Remitente</label>
+            <input
+              type="email"
+              placeholder="tu@tudominio.com"
+              value={resendFrom}
+              onChange={(e) => setResendFrom(e.target.value)}
+              className="w-full bg-slate-50 border border-slate-200 text-slate-900 text-sm rounded-xl px-4 py-3 focus:outline-none focus:ring-2 focus:ring-violet-500 transition-shadow"
+            />
+            <p className="text-xs text-slate-400 mt-1">Debe ser un email o dominio verificado en tu cuenta de Resend.</p>
           </div>
 
           <div className="pt-2">
