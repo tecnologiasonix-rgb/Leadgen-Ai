@@ -264,7 +264,9 @@ async function startServer() {
     let smtpPass = process.env.EMAIL_PASS;
     let smtpFromName = process.env.EMAIL_FROM_NAME || "Tecnologias Onix";
 
-    // Intentar leer smtpSettings de Firestore (opcional, no bloquea si falla)
+    let resendApiKey = process.env.RESEND_API_KEY;
+
+    // Leer configuración de usuario desde Firestore (una sola petición para SMTP + Resend)
     try {
       if (smtpSettings && smtpSettings.user && smtpSettings.pass) {
         smtpHost = smtpSettings.host || smtpHost;
@@ -275,7 +277,8 @@ async function startServer() {
       } else if (userId && admin && admin.apps && admin.apps.length) {
         const userDoc = await admin.firestore().collection('users').doc(userId).get();
         if (userDoc.exists) {
-          const userSmtpSettings = userDoc.data()?.smtpSettings;
+          const userData = userDoc.data() || {};
+          const userSmtpSettings = userData.smtpSettings;
           if (userSmtpSettings && userSmtpSettings.user && userSmtpSettings.pass) {
             smtpHost = userSmtpSettings.host || smtpHost;
             smtpPort = parseInt(userSmtpSettings.port || "465");
@@ -283,14 +286,16 @@ async function startServer() {
             smtpPass = userSmtpSettings.pass;
             smtpFromName = userSmtpSettings.fromName || smtpFromName;
           }
+          if (userData.resendApiKey && userData.resendApiKey.trim()) {
+            resendApiKey = userData.resendApiKey.trim();
+          }
         }
       }
     } catch (firestoreErr) {
-      console.warn("[Email] No se pudo leer smtpSettings de Firestore, usando variables de entorno:", (firestoreErr as Error).message);
+      console.warn("[Email] No se pudo leer configuración de Firestore, usando variables de entorno:", (firestoreErr as Error).message);
     }
 
     // --- Configuración Resend API (fallback) ---
-    const resendApiKey = process.env.RESEND_API_KEY;
     const resendFrom = process.env.EMAIL_FROM || "contacto@tecnologiasonix.online";
 
     // --- Función envío por Resend API ---
