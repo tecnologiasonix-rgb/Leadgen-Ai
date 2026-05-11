@@ -298,7 +298,7 @@ export const EMAIL_TEMPLATES = [
         <table align="center" width="100%" class="card" border="0" cellspacing="0" cellpadding="0">
           <tr>
             <td class="header">
-               <img src="https://raw.githubusercontent.com/Onixmanager/TecnologiasOnix/refs/heads/main/Tecnologiaslogomini.webp" alt="Tecnologías Onix" width="40" style="display: block; margin-bottom: 10px;">
+               <img src="https://res.cloudinary.com/djtiqzp9t/image/upload/v1778482873/Tecnologiaslogomini_nu1kp4.webp" alt="Tecnologías Onix" width="40" style="display: block; margin-bottom: 10px;">
                <h3 style="margin: 0; color: #111827; font-size: 16px; font-weight: 600;">Tecnologías Onix</h3>
             </td>
           </tr>
