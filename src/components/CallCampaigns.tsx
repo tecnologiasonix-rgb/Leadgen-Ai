@@ -4,7 +4,7 @@ import { db, auth } from '../lib/firebase';
 import {
   Phone, PhoneCall, ListFilter, User, Search, PhoneOff,
   Trash2, Edit3, MessageSquare, Check, X, Bot, Clock,
-  FileText, ChevronDown, ChevronUp, Mic, StopCircle, AlertCircle
+  FileText, ChevronDown, ChevronUp, Mic, StopCircle
 } from 'lucide-react';
 import { motion, AnimatePresence } from 'motion/react';
 import { toast } from 'sonner';
@@ -315,7 +315,7 @@ export const CallCampaigns: React.FC<{ globalLeads: Lead[], isLoading: boolean }
             <Phone className="w-6 h-6 text-emerald-500" />
             Campañas de Llamadas
           </h2>
-          <p className="text-gray-500 text-sm">Llama manualmente o lanza un agente IA que llama y transcribe la conversación.</p>
+          <p className="text-gray-500 text-sm">Llama manualmente o usa el agente IA — todo listo para usar, sin configuración previa.</p>
         </div>
       </div>
 
@@ -522,11 +522,8 @@ export const CallCampaigns: React.FC<{ globalLeads: Lead[], isLoading: boolean }
               <div className="flex items-start gap-2"><span className="bg-white/20 rounded-full w-5 h-5 flex items-center justify-center text-xs font-bold flex-shrink-0 mt-0.5">4</span><span>La conversación queda grabada y transcrita automáticamente</span></div>
             </div>
             <div className="bg-white/10 rounded-xl p-3 text-xs text-purple-200 border border-white/20">
-              <p className="font-semibold text-white mb-1 flex items-center gap-1"><AlertCircle className="w-3.5 h-3.5" /> Requiere configurar:</p>
-              <p>• <code className="bg-white/10 px-1 rounded">TWILIO_ACCOUNT_SID</code></p>
-              <p>• <code className="bg-white/10 px-1 rounded">TWILIO_AUTH_TOKEN</code></p>
-              <p>• <code className="bg-white/10 px-1 rounded">TWILIO_PHONE_NUMBER</code></p>
-              <p className="mt-1 text-purple-300">Añádelas al <code className="bg-white/10 px-1 rounded">.env</code> del servidor.</p>
+              <p className="font-semibold text-white mb-1 flex items-center gap-1"><Check className="w-3.5 h-3.5" /> Todo listo para usar</p>
+              <p>Haz tus campañas sin configuración previa. No necesitas conectar ninguna cuenta ni número propio: el agente IA ya está activo y disponible directamente en tu plan.</p>
             </div>
           </div>
 
