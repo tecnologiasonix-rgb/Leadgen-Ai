@@ -111,8 +111,8 @@ export class LeadService {
       for (let i = 0; i < docs.length; i += CHUNK_SIZE) {
         const chunk = docs.slice(i, i + CHUNK_SIZE);
         const batch = writeBatch(db);
-        chunk.forEach((document) => {
-          batch.delete(doc(db, "leads", document.id));
+        chunk.forEach((d) => {
+          batch.delete(d.ref);
         });
         await batch.commit();
         const chunkNum = Math.floor(i / CHUNK_SIZE) + 1;
