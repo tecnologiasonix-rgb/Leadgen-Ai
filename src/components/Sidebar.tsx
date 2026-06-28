@@ -35,7 +35,9 @@ export const Sidebar: React.FC<SidebarProps> = ({ currentView, setCurrentView, u
         </div>
         <div className="flex items-center gap-3">
            <div className="w-8 h-8 rounded-full bg-indigo-500/20 flex items-center justify-center border border-indigo-500/30 overflow-hidden">
-              <User className="w-4 h-4 text-indigo-400" />
+              {user?.photoURL
+                ? <img src={user.photoURL} alt={user.displayName || 'Usuario'} className="w-full h-full object-cover" referrerPolicy="no-referrer" />
+                : <User className="w-4 h-4 text-indigo-400" />}
             </div>
           <button onClick={() => auth.signOut()} className="text-slate-400 hover:text-white p-1">
             <LogOut className="w-5 h-5" />
@@ -83,8 +85,10 @@ export const Sidebar: React.FC<SidebarProps> = ({ currentView, setCurrentView, u
         {/* Desktop User Footer */}
         <div className="hidden md:block p-4 border-t border-white/10 bg-black/20 mt-auto">
           <div className="flex items-center gap-3 px-2 py-3 bg-white/5 rounded-xl border border-white/5 mb-4">
-            <div className="w-8 h-8 rounded-full bg-indigo-500/20 flex items-center justify-center border border-indigo-500/30">
-              <User className="w-4 h-4 text-indigo-400" />
+            <div className="w-8 h-8 rounded-full bg-indigo-500/20 flex items-center justify-center border border-indigo-500/30 overflow-hidden">
+              {user?.photoURL
+                ? <img src={user.photoURL} alt={user.displayName || 'Usuario'} className="w-full h-full object-cover" referrerPolicy="no-referrer" />
+                : <User className="w-4 h-4 text-indigo-400" />}
             </div>
             <div className="flex-1 min-w-0">
               <div className="text-xs font-bold text-white truncate">{user?.displayName || 'Usuario'}</div>
