@@ -34,6 +34,43 @@ async function startServer() {
   const app = express();
   const PORT = process.env.PORT ? parseInt(process.env.PORT as string, 10) : 3000;
 
+  // ── Middleware: verificar Firebase ID Token ──────────────────────────────
+  // Extrae el token del header "Authorization: Bearer <token>", lo verifica
+  // con Firebase Admin y añade req.uid con el UID del usuario autenticado.
+  // Solo funciona si Firebase Admin está inicializado (FIREBASE_SERVICE_ACCOUNT).
+  async function authenticate(
+    req: express.Request,
+    res: express.Response,
+    next: express.NextFunction
+  ) {
+    if (!admin.apps.length) {
+      return res
+        .status(503)
+        .json({ error: 'Servidor mal configurado: Firebase Admin no inicializado. Revisa FIREBASE_SERVICE_ACCOUNT en el .env.' });
+    }
+
+    const authHeader = req.headers.authorization;
+    if (!authHeader || !authHeader.startsWith('Bearer ')) {
+      return res
+        .status(401)
+        .json({ error: 'No autorizado: falta el token de autenticación (Authorization: Bearer <token>).' });
+    }
+
+    const idToken = authHeader.split('Bearer ')[1];
+    try {
+      const decoded = await admin.auth().verifyIdToken(idToken);
+      // Adjuntamos el UID al objeto request para que las rutas puedan usarlo
+      (req as any).uid = decoded.uid;
+      next();
+    } catch (err) {
+      console.error('[Auth Middleware] Token inválido o expirado:', err);
+      return res
+        .status(401)
+        .json({ error: 'No autorizado: token inválido o expirado.' });
+    }
+  }
+  // ─────────────────────────────────────────────────────────────────────────
+
   // API routes FIRST
   app.get("/api/health", (req, res) => {
     res.json({ 
@@ -146,7 +183,7 @@ async function startServer() {
     }
   });
 
-  app.post("/api/generate-leads", async (req, res) => {
+  app.post("/api/generate-leads", authenticate, async (req, res) => {
     const apiKey = process.env.DEEPSEEK_API_KEY;
     if (!apiKey) {
       return res.status(500).json({ error: "API Key de Deepseek no configurada en el servidor." });
@@ -184,7 +221,7 @@ async function startServer() {
     }
   });
 
-  app.post("/api/evaluate-lead", async (req, res) => {
+  app.post("/api/evaluate-lead", authenticate, async (req, res) => {
     const apiKey = process.env.DEEPSEEK_API_KEY;
     if (!apiKey) {
       return res.status(500).json({ error: "API Key de Deepseek no configurada" });
@@ -213,7 +250,7 @@ async function startServer() {
     }
   });
 
-  app.post("/api/generate-email", async (req, res) => {
+  app.post("/api/generate-email", authenticate, async (req, res) => {
     const apiKey = process.env.DEEPSEEK_API_KEY;
     if (!apiKey) {
       return res.status(500).json({ error: "API Key de Deepseek no configurada" });
@@ -254,7 +291,7 @@ async function startServer() {
 
   // API para enviar emails
   // API para enviar emails — intenta SMTP primero, si falla usa Resend API
-  app.post("/api/send-email", async (req, res) => {
+  app.post("/api/send-email", authenticate, async (req, res) => {
     const { to, subject, html, leads, userId, smtpSettings } = req.body;
 
     // --- Configuración SMTP ---
@@ -453,7 +490,7 @@ async function startServer() {
    * Lanza una llamada desde el número Twilio al teléfono del lead.
    * Twilio ejecutará el TwiML de /api/calls/twiml cuando el lead conteste.
    */
-  app.post("/api/calls/ai-call", async (req, res) => {
+  app.post("/api/calls/ai-call", authenticate, async (req, res) => {
     const accountSid = process.env.TWILIO_ACCOUNT_SID;
     const authToken  = process.env.TWILIO_AUTH_TOKEN;
     const fromNumber = process.env.TWILIO_PHONE_NUMBER;
@@ -812,7 +849,7 @@ Usa "contacted" si la conversación fue neutra, corta o sin una conclusión clar
    * GET /api/calls/audio/:recordingSid
    * Proxy autenticado para descargar grabaciones de Twilio sin exponer credenciales.
    */
-  app.get("/api/calls/audio/:recordingSid", async (req, res) => {
+  app.get("/api/calls/audio/:recordingSid", authenticate, async (req, res) => {
     const accountSid = process.env.TWILIO_ACCOUNT_SID;
     const authToken  = process.env.TWILIO_AUTH_TOKEN;
 
