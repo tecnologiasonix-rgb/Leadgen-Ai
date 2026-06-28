@@ -4,13 +4,14 @@ import { db } from '../lib/firebase';
 import { User } from 'firebase/auth';
 import { Lead } from '../types';
 import { Sparkles, Play, Square, Loader2, X } from 'lucide-react';
-import { AIEvaluator } from '../services/AIEvaluator';
+import { AIEvaluator, AI_EVAL_PROFILES, AIEvalProfile } from '../services/AIEvaluator';
 
 export const AIAgent: React.FC<{ user: User; visible?: boolean, globalLeads?: Lead[] }> = ({ user, visible = true, globalLeads = [] }) => {
   const leads = globalLeads;
   const [isRunning, setIsRunning] = useState(false);
   const [currentEvalId, setCurrentEvalId] = useState<string | null>(null);
   const [isOpen, setIsOpen] = useState(true);
+  const [selectedProfile, setSelectedProfile] = useState<AIEvalProfile>(AI_EVAL_PROFILES[0]);
 
   const pendingLeads = leads.filter(l => !l.aiEvaluated);
 
@@ -28,7 +29,7 @@ export const AIAgent: React.FC<{ user: User; visible?: boolean, globalLeads?: Le
         setCurrentEvalId(nextLead.id);
         try {
           // Eval
-          await AIEvaluator.evaluateLead(nextLead);
+          await AIEvaluator.evaluateLead(nextLead, selectedProfile);
         } catch (err) {
           console.error("AI Auto-agent error:", err);
         }
@@ -87,6 +88,23 @@ export const AIAgent: React.FC<{ user: User; visible?: boolean, globalLeads?: Le
           <p className="text-xs text-slate-500">
             Evaluación automática de leads en segundo plano.
           </p>
+
+          <div className="flex flex-col gap-1">
+            <label className="text-xs font-medium text-slate-600">Perfil de evaluación</label>
+            <select
+              value={selectedProfile.id}
+              onChange={e => {
+                const p = AI_EVAL_PROFILES.find(p => p.id === e.target.value);
+                if (p) setSelectedProfile(p);
+              }}
+              disabled={isRunning}
+              className="text-xs border border-slate-200 rounded-lg px-2 py-1.5 bg-white text-slate-700 disabled:opacity-50 focus:outline-none focus:ring-2 focus:ring-purple-300"
+            >
+              {AI_EVAL_PROFILES.map(p => (
+                <option key={p.id} value={p.id}>{p.name}</option>
+              ))}
+            </select>
+          </div>
 
           <div className="flex items-center gap-3 mt-2">
             {isRunning ? (

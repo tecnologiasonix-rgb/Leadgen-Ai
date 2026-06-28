@@ -295,15 +295,18 @@ export const EmailCampaigns: React.FC<{ globalLeads: any[], isLoading: boolean }
         }
       }
 
-      // Marcar cada lead enviado como contactado en campaña de email
-      const successfulLeadIds: string[] = result.results
-        ? result.results
-            .filter((r: any) => r.success !== false)
-            .map((r: any) => r.leadId || r.id)
-            .filter(Boolean)
-        : [];
+      // Marcar cada lead enviado como contactado en campaña de email.
+      // El backend devuelve { email, status } — cruzamos por email para obtener los IDs.
+      const successfulEmails: Set<string> = new Set(
+        (result.results ?? [])
+          .filter((r: any) => r.status === 'sent' || r.success !== false)
+          .map((r: any) => r.email)
+          .filter(Boolean)
+      );
 
-      const leadsToMark = successfulLeadIds.length > 0 ? successfulLeadIds : selectedLeads;
+      const leadsToMark = successfulEmails.size > 0
+        ? leadsToSend.filter(l => l.email && successfulEmails.has(l.email)).map(l => l.id)
+        : selectedLeads;
 
       await Promise.all(
         leadsToMark.map((leadId: string) =>
