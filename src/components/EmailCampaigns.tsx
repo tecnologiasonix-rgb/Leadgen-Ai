@@ -51,7 +51,20 @@ export const EmailCampaigns: React.FC<{ globalLeads: any[], isLoading: boolean }
 
   const [templateToDelete, setTemplateToDelete] = useState<UserTemplate | null>(null);
 
+  // BUG-024: plan cargado al montar para gate visual temprano (no solo en envío)
+  const [userPlan, setUserPlan] = useState<'free' | 'startup' | 'pro' | 'enterprise' | null>(null);
+
   const user = auth.currentUser;
+
+  // Carga el plan una sola vez al montar
+  useEffect(() => {
+    if (!user) return;
+    import('../services/UserService').then(({ UserService }) => {
+      UserService.getUserSubscription(user.uid)
+        .then(sub => setUserPlan(sub.plan))
+        .catch(() => setUserPlan('free'));
+    });
+  }, [user?.uid]);
 
   useEffect(() => {
     if (!user) return;
@@ -321,6 +334,30 @@ export const EmailCampaigns: React.FC<{ globalLeads: any[], isLoading: boolean }
       setIsSending(false);
     }
   };
+
+  // BUG-024: gate temprano — coherente con Pricing (Startup no incluye email campaigns)
+  if (userPlan === 'startup') {
+    return (
+      <div className="flex flex-col items-center justify-center min-h-[400px] space-y-6 text-center p-8">
+        <div className="w-16 h-16 bg-amber-100 rounded-2xl flex items-center justify-center">
+          <Mail className="w-8 h-8 text-amber-500" />
+        </div>
+        <div>
+          <h2 className="text-2xl font-bold text-slate-900 mb-2">Campañas de E-mail</h2>
+          <p className="text-slate-500 max-w-md">
+            Tu plan <strong>Startup</strong> no incluye Campañas de E-mail. Mejora a <strong>Pro</strong> para
+            desbloquear envíos masivos, seguimiento de aperturas y más.
+          </p>
+        </div>
+        <a
+          href="#pricing"
+          className="inline-flex items-center gap-2 px-6 py-3 bg-indigo-600 hover:bg-indigo-500 text-white font-bold rounded-xl transition-all shadow-lg shadow-indigo-600/20"
+        >
+          Ver planes Pro
+        </a>
+      </div>
+    );
+  }
 
   return (
     <div className="space-y-6">
