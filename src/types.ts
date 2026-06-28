@@ -10,6 +10,17 @@ export interface CallTranscript {
   status: 'in-progress' | 'completed' | 'failed';
 }
 
+// Configuración del agente IA específica de cada negocio/cuenta.
+// Se guarda en users/{uid}.aiCallConfig y el backend la inyecta en el guion
+// y en el prompt de DeepSeek. El comportamiento base del agente (tono, reglas,
+// duración de respuesta) NO es configurable aquí — eso lo controla la plataforma.
+export interface AiCallConfig {
+  businessName?: string;   // Nombre del negocio que se menciona al inicio de la llamada
+  services?: string;       // Qué ofrece el negocio (productos/servicios)
+  customContext?: string;  // Contexto libre adicional (promos, público objetivo, datos clave, etc.)
+  closingGoal?: string;    // Objetivo de la llamada (ej: "agendar una reunión", "conseguir el email")
+}
+
 export interface Lead {
   name: string;
   address: string;
