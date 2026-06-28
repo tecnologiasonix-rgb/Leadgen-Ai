@@ -4,11 +4,164 @@ import { db, auth } from '../lib/firebase';
 import {
   Phone, PhoneCall, ListFilter, User, Search, PhoneOff,
   Trash2, Edit3, MessageSquare, Check, X, Bot, Clock,
-  FileText, ChevronDown, ChevronUp, Mic, StopCircle
+  FileText, ChevronDown, ChevronUp, Mic, StopCircle, Settings as SettingsIcon, Save
 } from 'lucide-react';
 import { motion, AnimatePresence } from 'motion/react';
 import { toast } from 'sonner';
-import { Lead, LeadStatus, CallTranscript } from '../types';
+import { Lead, LeadStatus, CallTranscript, AiCallConfig } from '../types';
+import { UserService } from '../services/UserService';
+
+// ─── Componente: Configuración del negocio para el agente IA ───────────────
+const AgentConfigPanel: React.FC<{ userId: string }> = ({ userId }) => {
+  const [config, setConfig] = useState<AiCallConfig>({});
+  const [loading, setLoading] = useState(true);
+  const [saving, setSaving] = useState(false);
+  const [open, setOpen] = useState(false);
+
+  useEffect(() => {
+    UserService.getAiCallConfig(userId)
+      .then(setConfig)
+      .catch((e) => console.error('Error cargando configuración del agente:', e))
+      .finally(() => setLoading(false));
+  }, [userId]);
+
+  const handleChange = (field: keyof AiCallConfig, value: string) => {
+    setConfig((prev) => ({ ...prev, [field]: value }));
+  };
+
+  const handleSave = async () => {
+    if (!config.businessName?.trim()) {
+      toast.error('Pon al menos el nombre de tu negocio antes de guardar.');
+      return;
+    }
+    setSaving(true);
+    try {
+      await UserService.saveAiCallConfig(userId, config);
+      toast.success('Configuración del agente guardada. Se usará en tus próximas llamadas.');
+    } catch (e) {
+      console.error('Error guardando configuración del agente:', e);
+      toast.error('No se pudo guardar la configuración.');
+    } finally {
+      setSaving(false);
+    }
+  };
+
+  const hasBusinessName = !!config.businessName?.trim();
+
+  return (
+    <div className="bg-white p-6 rounded-3xl shadow-sm border border-slate-200">
+      <button
+        onClick={() => setOpen((o) => !o)}
+        className="w-full flex items-center justify-between text-left"
+      >
+        <h3 className="font-bold text-slate-900 flex items-center gap-2">
+          <SettingsIcon className="w-5 h-5 text-indigo-500" />
+          Configura tu agente IA
+        </h3>
+        {open ? <ChevronUp className="w-4 h-4 text-slate-400" /> : <ChevronDown className="w-4 h-4 text-slate-400" />}
+      </button>
+
+      {!open && (
+        <p className="text-xs text-slate-500 mt-2">
+          {hasBusinessName
+            ? `Llamando en nombre de "${config.businessName}". Pulsa para editar.`
+            : 'Aún no has personalizado el agente — está usando un guion genérico. Pulsa para configurarlo.'}
+        </p>
+      )}
+
+      <AnimatePresence>
+        {open && (
+          <motion.div
+            initial={{ height: 0, opacity: 0 }}
+            animate={{ height: 'auto', opacity: 1 }}
+            exit={{ height: 0, opacity: 0 }}
+            className="overflow-hidden"
+          >
+            {loading ? (
+              <div className="flex justify-center py-6">
+                <div className="w-6 h-6 border-3 border-indigo-400 border-t-transparent rounded-full animate-spin" />
+              </div>
+            ) : (
+              <div className="mt-4 space-y-4">
+                <p className="text-xs text-slate-500 leading-relaxed">
+                  Esta información se usa para personalizar lo que dice tu agente IA al llamar a tus leads.
+                  El comportamiento general del agente (tono, duración de las respuestas, profesionalismo) ya viene
+                  configurado por la plataforma — aquí solo defines el contexto de <strong>tu</strong> negocio.
+                </p>
+
+                <div>
+                  <label className="block text-xs font-semibold text-slate-700 mb-1">
+                    Nombre del negocio <span className="text-rose-500">*</span>
+                  </label>
+                  <input
+                    type="text"
+                    value={config.businessName || ''}
+                    onChange={(e) => handleChange('businessName', e.target.value)}
+                    placeholder="Ej: Clínica Dental Sonrisas"
+                    className="w-full text-sm bg-slate-50 border border-slate-200 rounded-lg px-3 py-2 outline-none focus:ring-2 focus:ring-indigo-500/20 focus:border-indigo-500"
+                  />
+                </div>
+
+                <div>
+                  <label className="block text-xs font-semibold text-slate-700 mb-1">
+                    Servicios u oferta
+                  </label>
+                  <textarea
+                    value={config.services || ''}
+                    onChange={(e) => handleChange('services', e.target.value)}
+                    placeholder="Ej: limpiezas dentales, ortodoncia invisible y blanqueamientos con financiación a 12 meses"
+                    rows={2}
+                    className="w-full text-sm bg-slate-50 border border-slate-200 rounded-lg px-3 py-2 outline-none focus:ring-2 focus:ring-indigo-500/20 focus:border-indigo-500 resize-none"
+                  />
+                </div>
+
+                <div>
+                  <label className="block text-xs font-semibold text-slate-700 mb-1">
+                    Objetivo de la llamada
+                  </label>
+                  <input
+                    type="text"
+                    value={config.closingGoal || ''}
+                    onChange={(e) => handleChange('closingGoal', e.target.value)}
+                    placeholder="Ej: agendar una cita esta semana"
+                    className="w-full text-sm bg-slate-50 border border-slate-200 rounded-lg px-3 py-2 outline-none focus:ring-2 focus:ring-indigo-500/20 focus:border-indigo-500"
+                  />
+                </div>
+
+                <div>
+                  <label className="block text-xs font-semibold text-slate-700 mb-1">
+                    Contexto adicional (opcional)
+                  </label>
+                  <textarea
+                    value={config.customContext || ''}
+                    onChange={(e) => handleChange('customContext', e.target.value)}
+                    placeholder="Ej: promoción activa este mes, horario de atención, zona donde operamos, público objetivo..."
+                    rows={3}
+                    className="w-full text-sm bg-slate-50 border border-slate-200 rounded-lg px-3 py-2 outline-none focus:ring-2 focus:ring-indigo-500/20 focus:border-indigo-500 resize-none"
+                  />
+                </div>
+
+                <button
+                  onClick={handleSave}
+                  disabled={saving}
+                  className={`w-full flex items-center justify-center gap-2 py-2.5 rounded-xl text-sm font-semibold transition-colors ${
+                    saving ? 'bg-indigo-200 text-indigo-400 cursor-not-allowed' : 'bg-indigo-600 hover:bg-indigo-700 text-white'
+                  }`}
+                >
+                  {saving ? (
+                    <><span className="w-4 h-4 border-2 border-indigo-400 border-t-transparent rounded-full animate-spin" /> Guardando...</>
+                  ) : (
+                    <><Save className="w-4 h-4" /> Guardar configuración</>
+                  )}
+                </button>
+              </div>
+            )}
+          </motion.div>
+        )}
+      </AnimatePresence>
+    </div>
+  );
+};
 
 // ─── Componente: Panel de transcripciones ───────────────────────────────────
 const TranscriptPanel: React.FC<{ transcripts: CallTranscript[] }> = ({ transcripts }) => {
@@ -507,6 +660,9 @@ export const CallCampaigns: React.FC<{ globalLeads: Lead[], isLoading: boolean }
 
         {/* ── Panel lateral ── */}
         <div className="col-span-1 space-y-6">
+
+          {/* Configuración del negocio para el agente IA */}
+          {user && <AgentConfigPanel userId={user.uid} />}
 
           {/* Cómo funciona la IA */}
           <div className="bg-gradient-to-br from-purple-600 to-indigo-700 p-6 rounded-3xl shadow-xl text-white relative overflow-hidden">
