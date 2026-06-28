@@ -55,7 +55,10 @@ export default function App() {
       try {
         setGlobalLeads(JSON.parse(cached));
         setGlobalLeadsLoading(false);
-      } catch (e) {}
+      } catch (e) {
+        console.warn('[Cache] leads localStorage corrupto, eliminando entrada:', e);
+        localStorage.removeItem(`leads_${user.uid}`);
+      }
     }
 
     const q = query(collection(db, 'leads'), where("userId", "==", user.uid));
