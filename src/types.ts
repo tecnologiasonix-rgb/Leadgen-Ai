@@ -1,3 +1,15 @@
+export interface CallTranscript {
+  callSid: string;
+  type: 'manual' | 'ai';
+  startedAt: string;
+  endedAt?: string;
+  durationSeconds?: number;
+  transcript?: string;         // texto completo de la transcripción
+  recordingUrl?: string;       // URL del audio en Twilio
+  aiSummary?: string;          // resumen generado por DeepSeek
+  status: 'in-progress' | 'completed' | 'failed';
+}
+
 export interface Lead {
   name: string;
   address: string;
@@ -15,6 +27,11 @@ export interface Lead {
   emailCampaignContacted?: boolean;
   emailCampaignContactedAt?: string;
   emailCampaignTemplate?: string;
+  // Campos de llamadas
+  callTranscripts?: CallTranscript[];
+  lastCallAt?: string;
+  lastCallType?: 'manual' | 'ai';
+  totalCalls?: number;
 }
 
 export type LeadStatus = 'new' | 'investigated' | 'contacted' | 'interested' | 'not-interested' | 'client';
