@@ -182,7 +182,7 @@ export const LeadFinder: React.FC<LeadFinderProps> = ({
         </div>
         <button
           onClick={handleSearch}
-          disabled={isLoading || !zipCode}
+          disabled={isLoading || !zipCode || !businessType.trim()}
           className="md:mt-6 bg-indigo-600 hover:bg-indigo-700 disabled:opacity-50 text-white font-bold px-10 py-4 rounded-2xl shadow-lg shadow-indigo-200 transition-all flex items-center justify-center gap-3 active:scale-[0.98]"
         >
           {isLoading ? <Loader2 className="w-6 h-6 animate-spin" /> : <>Explorar <Search className="w-5 h-5" /></>}

@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import { collection, query, where, onSnapshot } from 'firebase/firestore';
 import { db } from '../lib/firebase';
 import { User } from 'firebase/auth';
@@ -13,43 +13,69 @@ export const AIAgent: React.FC<{ user: User; visible?: boolean, globalLeads?: Le
   const [isOpen, setIsOpen] = useState(true);
   const [selectedProfile, setSelectedProfile] = useState<AIEvalProfile>(AI_EVAL_PROFILES[0]);
 
+  // Ref keeps leads fresh inside the async loop without being an effect dependency,
+  // preventing Firestore onSnapshot updates from re-triggering the effect mid-cycle.
+  const leadsRef = useRef(leads);
+  useEffect(() => { leadsRef.current = leads; }, [leads]);
+
+  // isProcessingRef prevents a second loop instance from spawning if React
+  // re-runs the effect while the async loop is still awaiting.
+  const isProcessingRef = useRef(false);
+
+  // shouldStopRef lets the loop exit cleanly after the current lead finishes,
+  // regardless of when React schedules the re-render from setIsRunning(false).
+  const shouldStopRef = useRef(false);
+
   const pendingLeads = leads.filter(l => !l.aiEvaluated);
 
   useEffect(() => {
-    const processNext = async () => {
-      if (!isRunning) return;
-      if (pendingLeads.length === 0) {
-        setIsRunning(false); // Done
-        return;
-      }
+    if (!isRunning) {
+      // Signal any in-flight loop to exit after its current step.
+      shouldStopRef.current = true;
+      return;
+    }
 
-      // Pick the first pending
-      const nextLead = pendingLeads[0];
-      if (nextLead && nextLead.id) {
-        setCurrentEvalId(nextLead.id);
-        try {
-          // Eval
-          await AIEvaluator.evaluateLead(nextLead, selectedProfile);
-        } catch (err) {
-          console.error("AI Auto-agent error:", err);
-        }
+    // Guard: only one loop instance at a time.
+    if (isProcessingRef.current) return;
 
-        // Wait a few seconds before next to avoid rate limits
-        if (isRunning) {
-          await new Promise(resolve => setTimeout(resolve, 12000)); // 12 segundos de pausa antibloqueo
+    shouldStopRef.current = false;
+    isProcessingRef.current = true;
+
+    const run = async () => {
+      try {
+        while (!shouldStopRef.current) {
+          // Read fresh leads on every iteration via ref — avoids stale closure.
+          const pending = leadsRef.current.filter(l => !l.aiEvaluated);
+
+          if (pending.length === 0) {
+            setIsRunning(false);
+            break;
+          }
+
+          const nextLead = pending[0];
+          setCurrentEvalId(nextLead.id ?? null);
+
+          try {
+            await AIEvaluator.evaluateLead(nextLead, selectedProfile);
+          } catch (err) {
+            console.error('AI Auto-agent error:', err);
+          }
+
+          setCurrentEvalId(null);
+
+          // Only pause if the agent hasn't been stopped during the evaluation.
+          if (!shouldStopRef.current) {
+            await new Promise<void>(resolve => setTimeout(resolve, 12000));
+          }
         }
+      } finally {
+        isProcessingRef.current = false;
         setCurrentEvalId(null);
       }
     };
 
-    if (isRunning && !currentEvalId) {
-      if (pendingLeads.length === 0) {
-        setIsRunning(false);
-      } else {
-        processNext();
-      }
-    }
-  }, [isRunning, pendingLeads, currentEvalId]);
+    run();
+  }, [isRunning]); // pendingLeads deliberately excluded — read via leadsRef inside the loop
 
   if (!visible) return null;
   if (pendingLeads.length === 0 && !isRunning && !isOpen) return null;

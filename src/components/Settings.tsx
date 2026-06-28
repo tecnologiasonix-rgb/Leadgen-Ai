@@ -1,6 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import { Save, Server, Loader2, Check, Key } from 'lucide-react';
-import { doc, getDoc, setDoc } from 'firebase/firestore';
+import { doc, getDoc } from 'firebase/firestore';
 import { db } from '../lib/firebase';
 import { motion } from 'motion/react';
 import { toast } from 'sonner';
@@ -30,13 +30,12 @@ export const Settings: React.FC<SettingsProps> = ({ user }) => {
           setHost(settings.host || '');
           setPort(settings.port || '');
           setEmailUser(settings.user || '');
-          setPass(settings.pass || '');
+          // pass is encrypted server-side — leave empty; user re-enters only to change it
           setFromName(settings.fromName || '');
         }
-        const resendKey = userDoc.data()?.resendApiKey;
-        if (resendKey) setResendApiKey(resendKey);
         const resendFromEmail = userDoc.data()?.resendFrom;
         if (resendFromEmail) setResendFrom(resendFromEmail);
+        // resendApiKey is encrypted server-side — leave empty; user re-enters only to change it
       }
     };
     fetchSettings();
@@ -49,23 +48,36 @@ export const Settings: React.FC<SettingsProps> = ({ user }) => {
     setIsSaved(false);
 
     try {
-      await setDoc(doc(db, 'users', user.uid), {
-        smtpSettings: {
+      const { getAuthToken } = await import('../lib/getAuthToken');
+      const token = await getAuthToken();
+      const response = await fetch('/api/save-email-config', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          Authorization: `Bearer ${token}`,
+        },
+        body: JSON.stringify({
           host,
           port,
           user: emailUser,
-          pass,
-          fromName
-        },
-        resendApiKey: resendApiKey.trim(),
-        resendFrom: resendFrom.trim()
-      }, { merge: true });
+          pass,           // empty string = keep existing encrypted value on server
+          fromName,
+          resendApiKey: resendApiKey.trim(),
+          resendFrom: resendFrom.trim(),
+        }),
+      });
+      if (!response.ok) {
+        const err = await response.json().catch(() => ({}));
+        throw new Error((err as any).error || `Error ${response.status}`);
+      }
+      setPass('');
+      setResendApiKey('');
       setIsSaved(true);
       toast.success('Configuración guardada correctamente.');
       setTimeout(() => setIsSaved(false), 3000);
     } catch (error) {
-      console.error("Error saving settings:", error);
-      toast.error('Error al guardar la configuración');
+      console.error('Error saving settings:', error);
+      toast.error(error instanceof Error ? error.message : 'Error al guardar la configuración');
     } finally {
       setIsLoading(false);
     }
@@ -133,7 +145,7 @@ export const Settings: React.FC<SettingsProps> = ({ user }) => {
             <label className="block text-xs font-bold text-slate-700 mb-1">Contraseña (o App Password)</label>
             <input 
               type="password" 
-              placeholder="••••••••••••" 
+              placeholder="Dejar vacío para conservar la contraseña guardada" 
               value={pass} 
               onChange={(e) => setPass(e.target.value)}
               className="w-full bg-slate-50 border border-slate-200 text-slate-900 text-sm rounded-xl px-4 py-3 focus:outline-none focus:ring-2 focus:ring-indigo-500 transition-shadow"
@@ -190,7 +202,7 @@ export const Settings: React.FC<SettingsProps> = ({ user }) => {
             <label className="block text-xs font-bold text-slate-700 mb-1">Resend API Key</label>
             <input
               type="password"
-              placeholder="re_xxxxxxxxxxxxxxxxxxxxxxxx"
+              placeholder="Dejar vacío para conservar la API key guardada"
               value={resendApiKey}
               onChange={(e) => setResendApiKey(e.target.value)}
               className="w-full bg-slate-50 border border-slate-200 text-slate-900 text-sm rounded-xl px-4 py-3 focus:outline-none focus:ring-2 focus:ring-violet-500 transition-shadow font-mono"

@@ -265,19 +265,13 @@ export const EmailCampaigns: React.FC<{ globalLeads: any[], isLoading: boolean }
         return;
       }
 
-      let smtpSettings;
-      if (user?.uid) {
-        const userDoc = await getDoc(doc(db, 'users', user.uid));
-        smtpSettings = userDoc.data()?.smtpSettings;
-      }
-
       const result = await emailService.sendEmail({
         to: '', 
         subject: selectedTemplate.subject,
         html: selectedTemplate.html,
         leads: leadsToSend,
         userId: user?.uid,
-        smtpSettings
+        // smtpSettings removed: server reads and decrypts credentials from Firestore via firebase-admin
       });
       
       setLogs(prev => [{
