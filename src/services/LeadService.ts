@@ -100,14 +100,26 @@ export class LeadService {
         return;
       }
 
-      console.log(`Found ${querySnapshot.size} leads to delete. Starting batch...`);
-      const batch = writeBatch(db);
-      querySnapshot.forEach((document) => {
-        batch.delete(doc(db, "leads", document.id));
-      });
-      
-      await batch.commit();
-      console.log('Successfully committed batch deletion');
+      const docs = querySnapshot.docs;
+      console.log(`Found ${docs.length} leads to delete. Starting chunked batch deletion...`);
+
+      // Firestore limita cada writeBatch a 500 operaciones.
+      // Dividimos en chunks para no superar ese límite.
+      const CHUNK_SIZE = 500;
+      const totalChunks = Math.ceil(docs.length / CHUNK_SIZE);
+
+      for (let i = 0; i < docs.length; i += CHUNK_SIZE) {
+        const chunk = docs.slice(i, i + CHUNK_SIZE);
+        const batch = writeBatch(db);
+        chunk.forEach((document) => {
+          batch.delete(doc(db, "leads", document.id));
+        });
+        await batch.commit();
+        const chunkNum = Math.floor(i / CHUNK_SIZE) + 1;
+        console.log(`Batch ${chunkNum}/${totalChunks} committed (${chunk.length} leads).`);
+      }
+
+      console.log(`Successfully deleted all ${docs.length} leads.`);
     } catch (error) {
       handleFirestoreError(error, OperationType.DELETE, path);
     }
