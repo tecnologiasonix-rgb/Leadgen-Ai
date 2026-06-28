@@ -167,7 +167,7 @@ async function startServer() {
     res.json({ 
       status: "ok",
       env: {
-        GEMINI_API_KEY_CONFIGURED: !!process.env.GEMINI_API_KEY,
+        DEEPSEEK_API_KEY_CONFIGURED: !!process.env.DEEPSEEK_API_KEY,
         STRIPE_SECRET_CONFIGURED: !!process.env.STRIPE_SECRET_KEY,
         FIREBASE_ADMIN_CONFIGURED: !!process.env.FIREBASE_SERVICE_ACCOUNT,
         SMTP_CONFIGURED: !!(process.env.EMAIL_USER && process.env.EMAIL_PASS)
