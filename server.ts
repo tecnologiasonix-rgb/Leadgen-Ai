@@ -5,6 +5,7 @@ import nodemailer from "nodemailer";
 import dotenv from "dotenv";
 import Stripe from "stripe";
 import admin from "firebase-admin";
+import crypto from "crypto";
 
 dotenv.config();
 
@@ -29,6 +30,45 @@ try {
 const stripe = process.env.STRIPE_SECRET_KEY 
   ? new Stripe(process.env.STRIPE_SECRET_KEY, { apiVersion: "2023-10-16" as any }) 
   : null;
+
+// ── Twilio Signature Validation ───────────────────────────────────────────
+// Implementación manual del algoritmo oficial de Twilio para no añadir el
+// SDK completo solo por esta función. Fuente:
+// https://www.twilio.com/docs/usage/webhooks/webhooks-security
+//
+// Algoritmo:
+//   1. Concatenar la URL completa del webhook (incluye query params)
+//   2. Si es POST con form-data, ordenar los parámetros alfabéticamente
+//      y concatenar cada par clave+valor al final de la URL
+//   3. Firmar con HMAC-SHA1 usando TWILIO_AUTH_TOKEN como clave
+//   4. Comparar el resultado en Base64 con la cabecera X-Twilio-Signature
+//
+// Se usa timingSafeEqual para evitar ataques de timing.
+function validateTwilioSignature(
+  authToken: string,
+  signature: string,
+  url: string,
+  params: Record<string, string>
+): boolean {
+  const paramString = Object.keys(params)
+    .sort()
+    .reduce((acc, key) => acc + key + params[key], '');
+
+  const hmac = crypto.createHmac('sha1', authToken);
+  hmac.update(url + paramString, 'utf8');
+  const computed = hmac.digest('base64');
+
+  // Comparación en tiempo constante para prevenir timing attacks
+  try {
+    const a = Buffer.from(computed);
+    const b = Buffer.from(signature);
+    if (a.length !== b.length) return false;
+    return crypto.timingSafeEqual(a, b);
+  } catch {
+    return false;
+  }
+}
+// ─────────────────────────────────────────────────────────────────────────
 
 async function startServer() {
   const app = express();
@@ -68,6 +108,57 @@ async function startServer() {
         .status(401)
         .json({ error: 'No autorizado: token inválido o expirado.' });
     }
+  }
+
+  // ── Middleware: validar firma de webhooks de Twilio ──────────────────────
+  // Twilio firma cada petición con HMAC-SHA1 usando TWILIO_AUTH_TOKEN.
+  // Si la firma no coincide, el request no procede de Twilio y se rechaza.
+  //
+  // Comportamiento en desarrollo (sin BASE_URL configurada o sin auth token):
+  //   - Se emite un warning y se deja pasar para no bloquear pruebas locales.
+  //   - En producción BASE_URL y TWILIO_AUTH_TOKEN son obligatorios.
+  //
+  // Nota: express.urlencoded() DEBE haberse ejecutado antes para que req.body
+  // contenga los parámetros form-encoded de Twilio correctamente.
+  function validateTwilio(
+    req: express.Request,
+    res: express.Response,
+    next: express.NextFunction
+  ) {
+    const authToken = process.env.TWILIO_AUTH_TOKEN;
+    const baseUrl   = process.env.BASE_URL;
+
+    // Degradación elegante en local (sin BASE_URL configurada)
+    if (!authToken || !baseUrl) {
+      console.warn(
+        '[Twilio Validation] TWILIO_AUTH_TOKEN o BASE_URL no configurados — ' +
+        'omitiendo validación de firma (solo aceptable en desarrollo local).'
+      );
+      return next();
+    }
+
+    const signature = req.headers['x-twilio-signature'] as string | undefined;
+    if (!signature) {
+      console.warn(`[Twilio Validation] Petición sin X-Twilio-Signature rechazada: ${req.originalUrl}`);
+      return res.status(403).send('Forbidden: Missing X-Twilio-Signature header.');
+    }
+
+    // La URL que Twilio firmó es la URL pública completa del webhook
+    // (BASE_URL + path + query params, sin barra final redundante)
+    const fullUrl = baseUrl.replace(/\/$/, '') + req.originalUrl;
+
+    // req.body contiene los parámetros form-data enviados por Twilio
+    // (SpeechResult, CallSid, CallStatus, etc.) gracias a express.urlencoded()
+    const params: Record<string, string> = req.body || {};
+
+    const isValid = validateTwilioSignature(authToken, signature, fullUrl, params);
+
+    if (!isValid) {
+      console.warn(`[Twilio Validation] Firma inválida para ${fullUrl} — petición rechazada.`);
+      return res.status(403).send('Forbidden: Invalid Twilio signature.');
+    }
+
+    next();
   }
   // ─────────────────────────────────────────────────────────────────────────
 
@@ -166,6 +257,10 @@ async function startServer() {
 
   // Importante: parsear JSON para el resto de rutas DESPUÉS del webhook de Stripe
   app.use(express.json());
+  // Twilio envía sus webhooks como application/x-www-form-urlencoded.
+  // Sin este parser, req.body.SpeechResult, req.body.CallSid, etc. llegan vacíos.
+  // Se registra DESPUÉS del webhook de Stripe (que necesita el raw body).
+  app.use(express.urlencoded({ extended: false }));
 
   // Configuración SMTP Dinámica
   const smtpPort = parseInt(process.env.EMAIL_PORT || "465");
@@ -556,7 +651,7 @@ async function startServer() {
    * Twilio ejecuta este endpoint cuando el lead contesta.
    * Devuelve TwiML con el guión del agente IA (voz sintética + gather de respuesta).
    */
-  app.post("/api/calls/twiml", async (req, res) => {
+  app.post("/api/calls/twiml", validateTwilio, async (req, res) => {
     const leadName = req.query.leadName || req.body.leadName || 'cliente';
     const leadId   = req.query.leadId   || req.body.leadId;
     const userId   = req.query.userId   || req.body.userId;
@@ -603,7 +698,7 @@ async function startServer() {
    * Twilio envía aquí la respuesta hablada del lead (SpeechResult).
    * DeepSeek genera la réplica del agente y se devuelve como TwiML.
    */
-  app.post("/api/calls/respond", async (req, res) => {
+  app.post("/api/calls/respond", validateTwilio, async (req, res) => {
     const speechResult = req.body.SpeechResult || '';
     const leadId = req.query.leadId || req.body.leadId;
     const userId = req.query.userId || req.body.userId;
@@ -748,7 +843,7 @@ Usa "contacted" si la conversación fue neutra, corta o sin una conclusión clar
    * Actualiza el transcript en Firestore a "completed" y, si la llamada se
    * completó con conversación, genera el resumen IA y actualiza el estado del lead.
    */
-  app.post("/api/calls/status", async (req, res) => {
+  app.post("/api/calls/status", validateTwilio, async (req, res) => {
     const { CallSid, CallStatus, CallDuration } = req.body;
     const leadId = req.query.leadId || req.body.leadId;
 
@@ -815,7 +910,7 @@ Usa "contacted" si la conversación fue neutra, corta o sin una conclusión clar
    * Webhook de Twilio con la URL de la grabación cuando está disponible.
    * También solicita la transcripción automática de Twilio.
    */
-  app.post("/api/calls/recording", async (req, res) => {
+  app.post("/api/calls/recording", validateTwilio, async (req, res) => {
     const { CallSid, RecordingUrl, RecordingDuration, RecordingSid } = req.body;
     const leadId = req.query.leadId || req.body.leadId;
 
