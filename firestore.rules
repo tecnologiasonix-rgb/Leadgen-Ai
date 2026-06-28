@@ -46,7 +46,6 @@ service cloud.firestore {
       allow create: if isSignedIn() && isValidLead(incoming());
       allow update: if isSignedIn() && existing().userId == request.auth.uid && incoming().userId == existing().userId;
       allow delete: if isSignedIn() && existing().userId == request.auth.uid;
-      allow list: if isSignedIn() && resource.data.userId == request.auth.uid;
     }
 
     // EmailTemplate Validation
@@ -64,7 +63,6 @@ service cloud.firestore {
       allow create: if isSignedIn() && isValidEmailTemplate(incoming());
       allow update: if isSignedIn() && existing().userId == request.auth.uid && incoming().userId == existing().userId;
       allow delete: if isSignedIn() && existing().userId == request.auth.uid;
-      allow list: if isSignedIn() && resource.data.userId == request.auth.uid;
     }
     
     match /userStats/{userId} {
