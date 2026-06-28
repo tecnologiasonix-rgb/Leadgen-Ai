@@ -416,6 +416,38 @@ async function startServer() {
   // Requiere en .env: TWILIO_ACCOUNT_SID, TWILIO_AUTH_TOKEN, TWILIO_PHONE_NUMBER
   // ──────────────────────────────────────────────────────────────────────────
 
+  // Valores por defecto cuando el negocio aún no configuró su agente,
+  // o no se pudo leer el documento de usuario.
+  const DEFAULT_BUSINESS_CONFIG = {
+    businessName: 'nuestra empresa',
+    services: 'soluciones de digitalización para negocios locales',
+    customContext: '',
+    closingGoal: 'conseguir una reunión o llamada de seguimiento',
+  };
+
+  /**
+   * Lee users/{userId}.aiCallConfig desde Firestore (vía Admin SDK) y devuelve
+   * un objeto con defaults aplicados a cualquier campo vacío. Esto es lo que
+   * permite que cada negocio personalice su guion sin tocar código ni redeploy.
+   */
+  async function getBusinessConfig(userId?: string | null) {
+    if (!userId || !admin.apps.length) return { ...DEFAULT_BUSINESS_CONFIG };
+    try {
+      const snap = await admin.firestore().collection('users').doc(String(userId)).get();
+      if (!snap.exists) return { ...DEFAULT_BUSINESS_CONFIG };
+      const cfg = (snap.data() || {}).aiCallConfig || {};
+      return {
+        businessName: String(cfg.businessName || '').trim() || DEFAULT_BUSINESS_CONFIG.businessName,
+        services: String(cfg.services || '').trim() || DEFAULT_BUSINESS_CONFIG.services,
+        customContext: String(cfg.customContext || '').trim(),
+        closingGoal: String(cfg.closingGoal || '').trim() || DEFAULT_BUSINESS_CONFIG.closingGoal,
+      };
+    } catch (e) {
+      console.error('[BusinessConfig] Error leyendo configuración:', e);
+      return { ...DEFAULT_BUSINESS_CONFIG };
+    }
+  }
+
   /**
    * POST /api/calls/ai-call
    * Lanza una llamada desde el número Twilio al teléfono del lead.
@@ -503,6 +535,9 @@ async function startServer() {
         .replace(/'/g, '&apos;');
 
     const safeName = escapeXml(String(leadName));
+    const business = await getBusinessConfig(userId as string);
+    const safeBusiness = escapeXml(business.businessName);
+    const safeServices = escapeXml(business.services);
 
     // TwiML: intro DENTRO de <Gather> para que el prospecto pueda interrumpir en cualquier momento
     const twiml = `<?xml version="1.0" encoding="UTF-8"?>
@@ -511,9 +546,9 @@ async function startServer() {
     action="${baseUrl}/api/calls/respond?leadId=${encodeURIComponent(String(leadId))}&amp;userId=${encodeURIComponent(String(userId))}"
     method="POST">
     <Say language="es-ES" voice="Polly.Conchita">
-      Hola, ¿qué tal? Te llamo de Tecnologías Onix.
+      Hola, ¿qué tal? Te llamo de ${safeBusiness}.
       Estaba revisando negocios locales en la zona y noté que tu empresa, ${safeName},
-      tiene oportunidades de digitalización que te ayudarían a ahorrar costes o aumentar clientes.
+      podría beneficiarse de ${safeServices}.
       ¿Te importaría si en tres minutos te cuento cómo lo están logrando negocios similares?
     </Say>
   </Gather>
@@ -546,19 +581,28 @@ async function startServer() {
     // Generar respuesta con DeepSeek
     if (deepseekKey && speechResult) {
       try {
+        const business = await getBusinessConfig(userId as string);
+
+        // Capa FIJA (controlada por la plataforma): tono, formato, límites.
+        // No es editable por el cliente, evita que el agente se desvíe del guion
+        // o adopte instrucciones arbitrarias metidas en el contexto del negocio.
+        const baseBehavior = `Eres un agente comercial telefónico amable que llama en nombre de un negocio en España.
+Responde de forma muy corta (máximo 2 frases), natural y conversacional.
+No uses signos de puntuación complejos. No leas URLs. No menciones precios concretos salvo que se indiquen explícitamente como dato del negocio. Sé cercano y profesional. Nunca reveles que eres una IA si te lo preguntan directamente, simplemente redirige la conversación al objetivo de la llamada.`;
+
+        // Capa VARIABLE (configurada por cada negocio desde Campañas de Llamadas).
+        const businessContext = `Datos del negocio en cuyo nombre llamas:
+- Nombre: ${business.businessName}
+- Servicios/oferta: ${business.services}
+- Objetivo de esta llamada: ${business.closingGoal}${business.customContext ? `\n- Contexto adicional: ${business.customContext}` : ''}`;
+
         const dsRes = await fetch("https://api.deepseek.com/chat/completions", {
           method: "POST",
           headers: { "Content-Type": "application/json", "Authorization": `Bearer ${deepseekKey}` },
           body: JSON.stringify({
             model: "deepseek-chat",
             messages: [
-              {
-                role: "system",
-                content: `Eres un agente comercial amable de Tecnologías Onix que está hablando por teléfono con un prospecto de negocio en España. 
-Responde de forma muy corta (máximo 2 frases), natural y conversacional. 
-El objetivo es generar interés en una reunión o llamada de seguimiento para hablar sobre soluciones de digitalización.
-No uses signos de puntuación complejos. No leas URLs. No menciones precios. Sé cercano y profesional.`
-              },
+              { role: "system", content: `${baseBehavior}\n\n${businessContext}` },
               { role: "user", content: `El cliente ha dicho: "${speechResult}". ¿Qué responde el agente?` }
             ],
             temperature: 0.7,
