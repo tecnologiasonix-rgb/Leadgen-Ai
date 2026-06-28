@@ -1,4 +1,4 @@
-import { collection, addDoc, query, where, getDocs, serverTimestamp, orderBy, doc, deleteDoc, writeBatch } from "firebase/firestore";
+import { collection, addDoc, query, where, getDocs, serverTimestamp, doc, deleteDoc, writeBatch } from "firebase/firestore";
 import { Lead } from "../types";
 import { db } from "../lib/firebase";
 import { getAuthToken } from "../lib/getAuthToken";
@@ -19,24 +19,6 @@ export class LeadService {
     } catch (error) {
       handleFirestoreError(error, OperationType.WRITE, path);
       return ""; // Never reached
-    }
-  }
-
-  async getUserLeads(userId: string): Promise<Lead[]> {
-    const path = "leads";
-    try {
-      const q = query(
-        collection(db, path),
-        where("userId", "==", userId)
-      );
-      const querySnapshot = await getDocs(q);
-      return querySnapshot.docs.map(doc => ({
-        id: doc.id,
-        ...doc.data()
-      })) as Lead[];
-    } catch (error) {
-      handleFirestoreError(error, OperationType.GET, path);
-      return []; // Never reached
     }
   }
 
