@@ -403,7 +403,10 @@ export const CallCampaigns: React.FC<{ globalLeads: Lead[], isLoading: boolean }
     try {
       const response = await fetch('/api/calls/ai-call', {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
+        headers: {
+          'Content-Type': 'application/json',
+          'Authorization': `Bearer ${await user.getIdToken()}`
+        },
         body: JSON.stringify({
           leadId: lead.id,
           leadName: lead.name,
