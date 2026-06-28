@@ -47,5 +47,5 @@ export interface Lead {
 
 export type LeadStatus = 'new' | 'investigated' | 'contacted' | 'interested' | 'not-interested' | 'client';
 
-export type View = 'finder' | 'manager' | 'campaigns' | 'calls' | 'dashboard' | 'billing';
+export type View = 'finder' | 'manager' | 'campaigns' | 'calls' | 'dashboard' | 'billing' | 'settings';
 export type ManagerFilter = 'all' | 'with-email' | 'no-website' | 'no-nothing';
