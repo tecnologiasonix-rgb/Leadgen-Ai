@@ -262,22 +262,6 @@ async function startServer() {
   // Se registra DESPUÉS del webhook de Stripe (que necesita el raw body).
   app.use(express.urlencoded({ extended: false }));
 
-  // Configuración SMTP Dinámica
-  const smtpPort = parseInt(process.env.EMAIL_PORT || "465");
-  const transporter = nodemailer.createTransport({
-    host: process.env.EMAIL_HOST || "smtp.zoho.eu",
-    port: smtpPort,
-    secure: smtpPort === 465, // SSL para 465, STARTTLS para otros
-    auth: {
-      user: process.env.EMAIL_USER,
-      pass: process.env.EMAIL_PASS,
-    },
-    // Añadimos esto para asegurar compatibilidad con servidores que requieren TLS
-    tls: {
-      rejectUnauthorized: false
-    }
-  });
-
   app.post("/api/generate-leads", authenticate, async (req, res) => {
     const apiKey = process.env.DEEPSEEK_API_KEY;
     if (!apiKey) {
