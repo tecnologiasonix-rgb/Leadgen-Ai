@@ -1,6 +1,7 @@
 import { Lead } from '../types';
 import { updateDoc, doc } from 'firebase/firestore';
 import { db } from '../lib/firebase';
+import { getAuthToken } from '../lib/getAuthToken';
 
 export interface AIEvalProfile {
   id: string;
@@ -67,7 +68,10 @@ Dame SOLO el texto de la nota resultante sin saludos ni introducciones, formato 
       
       const response = await fetch('/api/evaluate-lead', {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
+        headers: {
+          'Content-Type': 'application/json',
+          'Authorization': `Bearer ${await getAuthToken()}`
+        },
         body: JSON.stringify({ prompt })
       });
       if (!response.ok) throw new Error("API request failed");
@@ -93,7 +97,10 @@ Dame SOLO el texto de la nota resultante sin saludos ni introducciones, formato 
     try {
       const response = await fetch('/api/generate-email', {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
+        headers: {
+          'Content-Type': 'application/json',
+          'Authorization': `Bearer ${await getAuthToken()}`
+        },
         body: JSON.stringify({ promptDetails, currentHtml })
       });
       if (!response.ok) throw new Error("API request failed");

@@ -1,3 +1,5 @@
+import { getAuthToken } from '../lib/getAuthToken';
+
 export interface EmailLog {
   email: string;
   status: 'sent' | 'failed';
@@ -11,6 +13,7 @@ export const emailService = {
       method: 'POST',
       headers: {
         'Content-Type': 'application/json',
+        'Authorization': `Bearer ${await getAuthToken()}`
       },
       body: JSON.stringify(data),
     });

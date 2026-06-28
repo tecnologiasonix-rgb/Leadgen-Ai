@@ -1,6 +1,7 @@
 import { collection, addDoc, query, where, getDocs, serverTimestamp, orderBy, doc, deleteDoc, writeBatch } from "firebase/firestore";
 import { Lead } from "../types";
 import { db, auth } from "../lib/firebase";
+import { getAuthToken } from "../lib/getAuthToken";
 
 enum OperationType {
   CREATE = 'create',
@@ -129,7 +130,8 @@ export class LeadService {
         const response = await fetch('/api/generate-leads', {
           method: 'POST',
           headers: {
-            'Content-Type': 'application/json'
+            'Content-Type': 'application/json',
+            'Authorization': `Bearer ${await getAuthToken()}`
           },
           body: JSON.stringify({ prompt })
         });
