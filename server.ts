@@ -657,9 +657,59 @@ No uses signos de puntuación complejos. No leas URLs. No menciones precios conc
   });
 
   /**
+   * Genera un resumen breve de la llamada y clasifica su resultado usando DeepSeek.
+   * Devuelve { summary, outcome } — outcome es un LeadStatus sugerido o null si no
+   * se pudo determinar. Nunca toca el campo `notes` del lead: el resumen de IA y
+   * las notas manuales del negocio son cosas separadas y se guardan en campos distintos.
+   */
+  async function summarizeCallAndClassify(transcriptText: string): Promise<{ summary: string; outcome: string | null }> {
+    const deepseekKey = process.env.DEEPSEEK_API_KEY;
+    if (!deepseekKey || !transcriptText.trim()) return { summary: '', outcome: null };
+
+    try {
+      const dsRes = await fetch("https://api.deepseek.com/chat/completions", {
+        method: "POST",
+        headers: { "Content-Type": "application/json", "Authorization": `Bearer ${deepseekKey}` },
+        body: JSON.stringify({
+          model: "deepseek-chat",
+          messages: [
+            {
+              role: "system",
+              content: `Eres un asistente que analiza transcripciones de llamadas comerciales en español.
+Devuelve ÚNICAMENTE un objeto JSON, sin texto adicional ni markdown, con esta forma exacta:
+{"summary": "resumen de máximo 2-3 frases de lo que se habló y el resultado", "outcome": "interested" | "not-interested" | "contacted"}
+Usa "interested" solo si el prospecto mostró interés claro o pidió más información/seguimiento.
+Usa "not-interested" solo si rechazó explícitamente la propuesta.
+Usa "contacted" si la conversación fue neutra, corta o sin una conclusión clara.`
+            },
+            { role: "user", content: `Transcripción de la llamada:\n${transcriptText}` }
+          ],
+          temperature: 0.3,
+          max_tokens: 200,
+          response_format: { type: "json_object" },
+        })
+      });
+
+      if (!dsRes.ok) return { summary: '', outcome: null };
+      const dsData = await dsRes.json() as any;
+      const raw = dsData.choices?.[0]?.message?.content?.trim() || '{}';
+      const parsed = JSON.parse(raw);
+      const validOutcomes = ['interested', 'not-interested', 'contacted'];
+      return {
+        summary: typeof parsed.summary === 'string' ? parsed.summary.trim() : '',
+        outcome: validOutcomes.includes(parsed.outcome) ? parsed.outcome : null,
+      };
+    } catch (e) {
+      console.error("[DeepSeek Summary] Error generando resumen/clasificación:", e);
+      return { summary: '', outcome: null };
+    }
+  }
+
+  /**
    * POST /api/calls/status
    * Webhook de Twilio para el estado final de la llamada.
-   * Actualiza el transcript en Firestore a "completed".
+   * Actualiza el transcript en Firestore a "completed" y, si la llamada se
+   * completó con conversación, genera el resumen IA y actualiza el estado del lead.
    */
   app.post("/api/calls/status", async (req, res) => {
     const { CallSid, CallStatus, CallDuration } = req.body;
@@ -684,12 +734,35 @@ No uses signos de puntuación complejos. No leas URLs. No menciones precios conc
           const data = leadDoc.data() || {};
           const transcripts: any[] = data.callTranscripts || [];
           const idx = transcripts.findIndex((t: any) => t.callSid === CallSid || t.status === 'in-progress');
+
           if (idx !== -1) {
             transcripts[idx].status = CallStatus === 'completed' ? 'completed' : 'failed';
             transcripts[idx].endedAt = new Date().toISOString();
             transcripts[idx].durationSeconds = parseInt(CallDuration || '0');
             transcripts[idx].callSid = CallSid; // asegurar SID real si era fallback
-            await leadRef.update({ callTranscripts: transcripts });
+
+            const updatePayload: Record<string, any> = { callTranscripts: transcripts };
+
+            // Solo intentamos resumir/clasificar si la llamada terminó con conversación real.
+            if (CallStatus === 'completed' && transcripts[idx].transcript) {
+              const { summary, outcome } = await summarizeCallAndClassify(transcripts[idx].transcript);
+
+              if (summary) {
+                // El resumen IA vive DENTRO del transcript correspondiente (campo aiSummary),
+                // nunca en `notes` — así no se mezcla con las notas manuales del negocio.
+                transcripts[idx].aiSummary = summary;
+                updatePayload.callTranscripts = transcripts;
+              }
+
+              // Solo actualizamos el estado del lead automáticamente si sigue en 'contacted',
+              // que es el estado por defecto puesto al lanzar la llamada. Si alguien ya lo
+              // clasificó manualmente como 'interested', 'client', etc., no lo pisamos.
+              if (outcome && data.status === 'contacted') {
+                updatePayload.status = outcome;
+              }
+            }
+
+            await leadRef.update(updatePayload);
           }
         }
       } catch (e) {
