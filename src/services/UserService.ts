@@ -1,5 +1,6 @@
 import { db, auth } from '../lib/firebase';
 import { doc, getDoc, setDoc, updateDoc, increment } from 'firebase/firestore';
+import { AiCallConfig } from '../types';
 
 export interface UserSubscription {
   plan: 'free' | 'startup' | 'pro' | 'enterprise';
@@ -50,5 +51,21 @@ export const UserService = {
         leadsUsed: increment(count)
       });
     }
+  },
+
+  // ── Configuración del agente IA de llamadas (por negocio/cuenta) ──────────
+  async getAiCallConfig(userId: string): Promise<AiCallConfig> {
+    const userRef = doc(db, 'users', userId);
+    const userSnap = await getDoc(userRef);
+    if (!userSnap.exists()) return {};
+    const data = userSnap.data();
+    return data.aiCallConfig || {};
+  },
+
+  async saveAiCallConfig(userId: string, config: AiCallConfig) {
+    const userRef = doc(db, 'users', userId);
+    // setDoc con merge para no pisar el resto del doc (plan, leadsUsed, etc.)
+    // y para que funcione aunque el doc de usuario todavía no exista.
+    await setDoc(userRef, { aiCallConfig: config }, { merge: true });
   }
 };
