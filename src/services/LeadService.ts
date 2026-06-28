@@ -1,42 +1,8 @@
 import { collection, addDoc, query, where, getDocs, serverTimestamp, orderBy, doc, deleteDoc, writeBatch } from "firebase/firestore";
 import { Lead } from "../types";
-import { db, auth } from "../lib/firebase";
+import { db } from "../lib/firebase";
 import { getAuthToken } from "../lib/getAuthToken";
-
-enum OperationType {
-  CREATE = 'create',
-  UPDATE = 'update',
-  DELETE = 'delete',
-  LIST = 'list',
-  GET = 'get',
-  WRITE = 'write',
-}
-
-interface FirestoreErrorInfo {
-  error: string;
-  operationType: OperationType;
-  path: string | null;
-  authInfo: {
-    userId?: string | null;
-    email?: string | null;
-    emailVerified?: boolean | null;
-  }
-}
-
-function handleFirestoreError(error: unknown, operationType: OperationType, path: string | null) {
-  const errInfo: FirestoreErrorInfo = {
-    error: error instanceof Error ? error.message : String(error),
-    authInfo: {
-      userId: auth.currentUser?.uid,
-      email: auth.currentUser?.email,
-      emailVerified: auth.currentUser?.emailVerified,
-    },
-    operationType,
-    path
-  }
-  console.error('Firestore Error Details:', JSON.stringify(errInfo, null, 2));
-  throw new Error(`Error en Firestore (${operationType} en ${path}): ${errInfo.error}`);
-}
+import { OperationType, handleFirestoreError } from "../utils/firestore-error";
 
 export class LeadService {
   async saveToFirestore(lead: Lead, userId: string): Promise<string> {
