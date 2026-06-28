@@ -38,18 +38,32 @@ export const UserService = {
   async incrementLeadsUsed(userId: string, count: number) {
     const userRef = doc(db, 'users', userId);
     const userSnap = await getDoc(userRef);
-    
+    const nowISO = new Date().toISOString();
+    const currentMonth = nowISO.slice(0, 7); // "YYYY-MM"
+
     if (!userSnap.exists()) {
       await setDoc(userRef, {
         plan: 'free',
         leadsLimit: 3,
         leadsUsed: count,
-        createdAt: new Date().toISOString()
+        lastResetAt: currentMonth,
+        createdAt: nowISO
       });
     } else {
-      await updateDoc(userRef, {
-        leadsUsed: increment(count)
-      });
+      const data = userSnap.data();
+      const lastResetAt = data.lastResetAt ?? null;
+
+      if (lastResetAt !== currentMonth) {
+        // El mes cambió: resetear el contador antes de añadir los nuevos leads
+        await updateDoc(userRef, {
+          leadsUsed: count,
+          lastResetAt: currentMonth
+        });
+      } else {
+        await updateDoc(userRef, {
+          leadsUsed: increment(count)
+        });
+      }
     }
   },
 
